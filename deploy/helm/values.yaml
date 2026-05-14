@@ -1,0 +1,58 @@
+# Default values for aegrail-engine.
+# This is a YAML-formatted file. Values shown are defaults; override on
+# the helm install / upgrade command line or with --values <file>.
+
+image:
+  repository: ghcr.io/arpitcoder/aegrail-engine
+  tag: ""  # defaults to chart.appVersion
+  pullPolicy: IfNotPresent
+
+# The HTTP forward proxy port the sidecar listens on inside the pod.
+# Agent containers point HTTP_PROXY / HTTPS_PROXY env vars at this.
+proxy:
+  listenPort: 8080
+
+# Egress allowlist policy. Deny-by-default; only listed destinations
+# may be reached by the agent container.
+#
+# Each entry is a host or host:port. Wildcards (e.g. *.openai.com) are
+# planned for v0.2.0.
+policy:
+  allowlist: []
+  # Examples:
+  #   - api.openai.com
+  #   - api.anthropic.com
+  #   - generativelanguage.googleapis.com
+
+# Audit log configuration. Default: stdout (collected by the cluster's
+# log shipper). File mode writes to a mounted volume.
+audit:
+  mode: stdout  # one of: stdout, file
+  filePath: /var/log/aegrail/audit.jsonl
+
+# Resource limits for the sidecar. The engine is a small Go binary;
+# default budgets are intentionally tight.
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 32Mi
+
+# Sidecar injection mode. Manual: add the sidecar block to your pod
+# spec yourself. Webhook: install a mutating admission webhook
+# (planned v0.3.0) that injects automatically based on pod annotation.
+injection:
+  mode: manual
+
+# Security context for the sidecar container. Run as non-root with
+# minimal capabilities by default.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL

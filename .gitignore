@@ -1,0 +1,46 @@
+# Compiled binaries (anchored to repo root so cmd/aegrail-engine/ isn't matched)
+/aegrail-engine
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Go build cache (in case of stray copies)
+vendor/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Secrets — never commit
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# Build / release artifacts
+dist/
+bin/
+
+# Local Helm release artifacts
+*.tgz
+
+# Local audit logs from manual testing
+audit*.jsonl
+
+# Local agent / editor / tool context
+CLAUDE.md
+AGENTS.md
+.aider*
+.cursor*
+.claude/
