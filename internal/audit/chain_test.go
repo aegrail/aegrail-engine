@@ -228,14 +228,3 @@ func buildValidChain(t *testing.T, n int) []Event {
 	return out
 }
 
-func isHex(s string) bool {
-	for _, r := range s {
-		switch {
-		case r >= '0' && r <= '9':
-		case r >= 'a' && r <= 'f':
-		default:
-			return false
-		}
-	}
-	return true
-}
