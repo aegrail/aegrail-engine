@@ -33,10 +33,10 @@ type Event struct {
 // EventType literal so cross-language consumers can match on the
 // same set of values.
 const (
-	TypeEngineStart    = "engine_start"
-	TypeEngineShutdown = "engine_shutdown"
+	TypeEngineStart     = "engine_start"
+	TypeEngineShutdown  = "engine_shutdown"
 	TypeEngineHeartbeat = "engine_heartbeat"
-	TypeEgressAllowed  = "egress_allowed"
-	TypeEgressDenied   = "egress_denied"
-	TypeEgressError    = "egress_error"
+	TypeEgressAllowed   = "egress_allowed"
+	TypeEgressDenied    = "egress_denied"
+	TypeEgressError     = "egress_error"
 )

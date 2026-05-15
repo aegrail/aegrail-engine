@@ -8,14 +8,14 @@
 // by the underlying matcher; the dot character is just a literal,
 // which gives the following behavior:
 //
-//   "api.openai.com"    matches only the exact host
-//   "*.openai.com"      matches any host that ends in ".openai.com" —
-//                       e.g. api.openai.com, api.v2.openai.com,
-//                       alpha.beta.gamma.openai.com. The "*" is
-//                       greedy across dots. Does NOT match
-//                       "openai.com" (no leading dot to consume).
-//   "*"                 matches any host (use only intentionally)
-//   "?"                 matches any single character
+//	"api.openai.com"    matches only the exact host
+//	"*.openai.com"      matches any host that ends in ".openai.com" —
+//	                    e.g. api.openai.com, api.v2.openai.com,
+//	                    alpha.beta.gamma.openai.com. The "*" is
+//	                    greedy across dots. Does NOT match
+//	                    "openai.com" (no leading dot to consume).
+//	"*"                 matches any host (use only intentionally)
+//	"?"                 matches any single character
 //
 // If you need strict single-level subdomain matching ("api.openai.com"
 // but not "api.v2.openai.com"), spell out the patterns explicitly —

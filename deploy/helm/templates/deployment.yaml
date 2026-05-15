@@ -32,8 +32,9 @@ spec:
         - name: aegrail-engine
           image: {{ include "aegrail-engine.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args:
-            - --listen=:{{ .Values.proxy.listenPort }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "aegrail-engine.fullname" . }}-policy
           ports:
             - name: proxy
               containerPort: {{ .Values.proxy.listenPort }}
@@ -60,11 +61,13 @@ spec:
             capabilities:
               drop:
                 {{- toYaml .Values.securityContext.capabilities.drop | nindent 16 }}
+          {{- if eq .Values.audit.mode "file" }}
           volumeMounts:
-            - name: policy
-              mountPath: /etc/aegrail
-              readOnly: true
+            - name: audit
+              mountPath: {{ .Values.audit.filePath | dir }}
+          {{- end }}
+      {{- if eq .Values.audit.mode "file" }}
       volumes:
-        - name: policy
-          configMap:
-            name: {{ include "aegrail-engine.fullname" . }}-policy
+        - name: audit
+          emptyDir: {}
+      {{- end }}

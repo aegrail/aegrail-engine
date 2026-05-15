@@ -14,22 +14,26 @@ import (
 //
 // To regenerate the expected hash:
 //
-//   uv run --no-project --isolated --python 3.12 --with aegrail \
-//     python -c "
+//	uv run --no-project --isolated --python 3.12 --with aegrail \
+//	  python -c "
+//
 // from aegrail import AuditEvent
 // from aegrail.audit import compute_event_hash
 // e = AuditEvent(
-//     ts='2026-05-15T09:42:11.123Z',
-//     session_id='sess_test_1',
-//     agent_identity='egress-proxy/v1',
-//     invoking_user=None,
-//     principal='egress-proxy/v1@sess_test_1',
-//     event='egress_denied',
-//     payload={'host': 'blocked.example', 'reason': 'not_in_allowlist'},
-//     budget={},
+//
+//	ts='2026-05-15T09:42:11.123Z',
+//	session_id='sess_test_1',
+//	agent_identity='egress-proxy/v1',
+//	invoking_user=None,
+//	principal='egress-proxy/v1@sess_test_1',
+//	event='egress_denied',
+//	payload={'host': 'blocked.example', 'reason': 'not_in_allowlist'},
+//	budget={},
+//
 // )
 // print(compute_event_hash(e, prev_hash=None))
-//   "
+//
+//	"
 //
 // If this test ever fails after a code change to chain.go or
 // canonical.go: the Go implementation has diverged from the Python
@@ -227,4 +231,3 @@ func buildValidChain(t *testing.T, n int) []Event {
 	}
 	return out
 }
-

@@ -1,11 +1,26 @@
-// Command aegrail-engine is the Kubernetes-deployable enforcement
-// engine for aegrail. The v0.1.0 milestone replaces this placeholder
-// with the real HTTP forward proxy + allowlist enforcement +
-// audit-chain emission. Until then, this binary serves a working
-// HTTP server that responds 502 to all proxy requests with an
-// informative body, plus /healthz and /readyz endpoints so the pod
-// can reach Ready state and the Helm chart can be validated
-// end-to-end in a kind cluster.
+// Command aegrail-engine is the Kubernetes-deployable HTTP forward
+// proxy that enforces an egress allowlist for an agent workload and
+// emits a SHA-256-chained audit log identical to aegrail-py's
+// format. The agent sets HTTP_PROXY / HTTPS_PROXY to point at this
+// process; every outbound request is allowed, denied, or surfaced
+// as an error, and one audit event is written through the
+// configured sink for every decision.
+//
+// Configuration is env-driven so the same image runs on K8s
+// (Helm-managed ConfigMap), Fargate (task definition), App Runner
+// where supported, or locally for testing:
+//
+//	AEGRAIL_ENGINE_ALLOWLIST           comma-separated host patterns
+//	                                   (fnmatch-compatible)
+//	AEGRAIL_ENGINE_AGENT_IDENTITY      identity in audit events
+//	                                   (default: egress-proxy/v1)
+//	AEGRAIL_ENGINE_AUDIT_FILE          path to JSONL audit file
+//	                                   (mutually exclusive with stdout)
+//	AEGRAIL_ENGINE_AUDIT_STDOUT        "1" -> stdout sink (default)
+//	AEGRAIL_ENGINE_LISTEN              listen addr (default :8080)
+//
+// Flags can override any env var; the env-driven path is the
+// production path.
 package main
 
 import (
@@ -18,47 +33,113 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
+
+	"github.com/arpitcoder/aegrail-engine/internal/audit"
+	"github.com/arpitcoder/aegrail-engine/internal/policy"
+	"github.com/arpitcoder/aegrail-engine/internal/proxy"
 )
 
 // Version is overwritten at build time via -ldflags.
 var Version = "0.0.0-dev"
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatalf("aegrail-engine: %v", err)
+	}
+}
+
+func run() error {
 	var (
 		listen          string
+		agentIdentity   string
+		allowlistFlag   string
+		auditFile       string
+		auditStdout     bool
 		shutdownTimeout time.Duration
 		showVersion     bool
 	)
-
-	flag.StringVar(&listen, "listen", ":8080", "address to listen on for proxy traffic")
-	flag.DurationVar(&shutdownTimeout, "shutdown-timeout", 10*time.Second, "max time to wait for in-flight requests on SIGTERM")
+	flag.StringVar(&listen, "listen", envDefault("AEGRAIL_ENGINE_LISTEN", ":8080"),
+		"address to listen on for proxy traffic")
+	flag.StringVar(&agentIdentity, "agent-identity",
+		envDefault("AEGRAIL_ENGINE_AGENT_IDENTITY", "egress-proxy/v1"),
+		"identity stamped on audit events")
+	flag.StringVar(&allowlistFlag, "allowlist", os.Getenv("AEGRAIL_ENGINE_ALLOWLIST"),
+		"comma-separated egress host patterns")
+	flag.StringVar(&auditFile, "audit-file", os.Getenv("AEGRAIL_ENGINE_AUDIT_FILE"),
+		"path to JSONL audit log (mutually exclusive with audit-stdout)")
+	flag.BoolVar(&auditStdout, "audit-stdout",
+		os.Getenv("AEGRAIL_ENGINE_AUDIT_STDOUT") == "1",
+		"emit audit events to stdout (default when no audit-file is given)")
+	flag.DurationVar(&shutdownTimeout, "shutdown-timeout", 10*time.Second,
+		"max time to wait for in-flight requests on SIGTERM")
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")
 	flag.Parse()
 
 	if showVersion || (flag.NArg() > 0 && flag.Arg(0) == "version") {
 		fmt.Println(Version)
-		return
+		return nil
 	}
 
+	patterns := parseAllowlist(allowlistFlag)
+	if len(patterns) == 0 {
+		return errors.New("AEGRAIL_ENGINE_ALLOWLIST is empty — refusing to start with empty allowlist (would deny all)")
+	}
+	pol, err := policy.New(patterns)
+	if err != nil {
+		return fmt.Errorf("policy: %w", err)
+	}
+
+	sink, err := openSink(auditFile, auditStdout)
+	if err != nil {
+		return fmt.Errorf("audit sink: %w", err)
+	}
+	defer func() { _ = sink.Close() }()
+
+	session, err := proxy.NewSession(agentIdentity)
+	if err != nil {
+		return fmt.Errorf("session: %w", err)
+	}
+
+	prox := &proxy.Proxy{
+		Policy:  pol,
+		Sink:    sink,
+		Session: session,
+	}
+	prox.EmitEngineStart(Version)
+
+	// CONNECT requests use authority-form URLs (no path component),
+	// which http.ServeMux mis-routes — its pattern match assumes a
+	// rooted path. Dispatch by method up front: CONNECT goes
+	// straight to the proxy; everything else uses the mux for
+	// /healthz, /readyz, and the plain-HTTP forward path.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", livenessHandler)
 	mux.HandleFunc("/readyz", readinessHandler)
-	mux.HandleFunc("/", placeholderProxyHandler)
+	mux.Handle("/", prox)
+
+	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodConnect {
+			prox.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 
 	srv := &http.Server{
 		Addr:              listen,
-		Handler:           loggingMiddleware(mux),
+		Handler:           loggingMiddleware(root),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	// Graceful shutdown on SIGTERM / SIGINT
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
 	go func() {
-		log.Printf("aegrail-engine %s listening on %s (placeholder build — proxy not yet implemented)", Version, listen)
+		log.Printf("aegrail-engine %s listening on %s; policy=%v identity=%s",
+			Version, listen, pol.Patterns(), agentIdentity)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("listen: %v", err)
 		}
@@ -67,13 +148,43 @@ func main() {
 	<-ctx.Done()
 	log.Printf("aegrail-engine: received shutdown signal, draining for up to %s", shutdownTimeout)
 
+	prox.EmitEngineShutdown("sigterm")
+
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("aegrail-engine: shutdown error: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("shutdown: %w", err)
 	}
 	log.Print("aegrail-engine: clean shutdown complete")
+	return nil
+}
+
+func envDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func parseAllowlist(raw string) []string {
+	out := make([]string, 0)
+	for _, p := range strings.Split(raw, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func openSink(filePath string, stdoutFlag bool) (audit.Sink, error) {
+	if filePath != "" {
+		if stdoutFlag {
+			return nil, errors.New("set either AEGRAIL_ENGINE_AUDIT_FILE or AEGRAIL_ENGINE_AUDIT_STDOUT, not both")
+		}
+		return audit.NewFileSink(filePath)
+	}
+	return audit.NewStdoutSink(), nil
 }
 
 func livenessHandler(w http.ResponseWriter, _ *http.Request) {
@@ -84,23 +195,6 @@ func livenessHandler(w http.ResponseWriter, _ *http.Request) {
 func readinessHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, "ready\n")
-}
-
-func placeholderProxyHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("X-Aegrail-Version", Version)
-	w.Header().Set("X-Aegrail-Status", "pre-release-placeholder")
-	w.WriteHeader(http.StatusBadGateway)
-	_, _ = fmt.Fprintf(w,
-		"aegrail-engine %s pre-release placeholder.\n\n"+
-			"The HTTP forward proxy + allowlist enforcement + audit-chain\n"+
-			"emission are part of the v0.1.0 milestone and not yet shipped.\n"+
-			"Until then, this binary exists so the Helm chart + Kubernetes\n"+
-			"deployment shape can be validated end-to-end in a kind cluster.\n\n"+
-			"Request observed: %s %s\n"+
-			"See: https://github.com/arpitcoder/aegrail-engine#roadmap\n",
-		Version, r.Method, r.URL.RequestURI(),
-	)
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {

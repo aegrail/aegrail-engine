@@ -31,6 +31,10 @@ replicaCount: 1
 proxy:
   listenPort: 8080
 
+# Identity stamped on every audit event the engine emits. Stable
+# string — your audit chain joins on it.
+agentIdentity: "egress-proxy/v1"
+
 # Egress allowlist policy. Deny-by-default; only listed destinations
 # are permitted at v0.1.0+. Empty list = deny all.
 # Wildcards (e.g. *.openai.com) supported via fnmatch in the engine.
