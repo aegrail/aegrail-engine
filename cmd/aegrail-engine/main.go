@@ -42,8 +42,11 @@ import (
 	"github.com/arpitcoder/aegrail-engine/internal/proxy"
 )
 
-// Version is overwritten at build time via -ldflags.
-var Version = "0.0.0-dev"
+// Version is the source-level fallback. CI builds override this at
+// link time via `-ldflags "-X main.Version=$VERSION"` based on the
+// git tag, so the value here is what local `go run` / `go build`
+// reports — keep it in sync with the most recent tag for hygiene.
+var Version = "0.1.0-rc"
 
 func main() {
 	if err := run(); err != nil {
