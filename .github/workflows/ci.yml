@@ -24,9 +24,17 @@ jobs:
       - name: Verify go.mod tidy
         run: |
           go mod tidy
-          if ! git diff --quiet go.mod go.sum 2>/dev/null; then
-            echo "go.mod / go.sum out of date"
-            git diff go.mod go.sum
+          # go.sum only exists when the module has external deps. The
+          # placeholder build is stdlib-only, so go.sum may be absent —
+          # check each file independently.
+          if ! git diff --quiet go.mod 2>/dev/null; then
+            echo "go.mod out of date"
+            git diff go.mod
+            exit 1
+          fi
+          if [ -f go.sum ] && ! git diff --quiet go.sum 2>/dev/null; then
+            echo "go.sum out of date"
+            git diff go.sum
             exit 1
           fi
       - name: Build
