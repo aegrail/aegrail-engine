@@ -1,0 +1,45 @@
+name: chart-release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: latest
+
+      - name: Sync chart version with tag
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#v}"
+          sed -i "s/^version:.*/version: ${version}/" deploy/helm/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${version}\"/" deploy/helm/Chart.yaml
+          cat deploy/helm/Chart.yaml
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.7.0
+        with:
+          charts_dir: deploy
+          skip_existing: true
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"

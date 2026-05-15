@@ -1,0 +1,35 @@
+aegrail-engine {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+This is a pre-release build. The HTTP forward proxy + allowlist enforcement
++ audit-chain emission are part of the v0.1.0 milestone and not yet shipped.
+The deployed pod serves /healthz, /readyz, and returns 502 with an
+informative body on all other paths — enough to validate the chart shape
+end-to-end, not enough to actually enforce anything yet.
+
+Verify the engine is running:
+
+  kubectl get deploy {{ include "aegrail-engine.fullname" . }} -n {{ .Release.Namespace }}
+
+Hit its health endpoint (within the cluster):
+
+  kubectl run --rm -i --tty curl-test \
+    --image=curlimages/curl --restart=Never -n {{ .Release.Namespace }} -- \
+    curl -s http://{{ include "aegrail-engine.fullname" . }}:{{ .Values.service.port }}/healthz
+
+Current allowlist policy:
+
+{{- range .Values.policy.allowlist }}
+  - {{ . }}
+{{- else }}
+  (none configured — DENY-ALL by default once v0.1.0 lands)
+{{- end }}
+
+Override the allowlist:
+
+  helm upgrade {{ .Release.Name }} ./deploy/helm \
+    --set policy.allowlist[0]=api.openai.com \
+    --set policy.allowlist[1]=api.anthropic.com
+
+Roadmap and architecture:
+  https://github.com/arpitcoder/aegrail-engine
+  https://github.com/arpitcoder/aegrail/blob/main/ARCHITECTURE.md

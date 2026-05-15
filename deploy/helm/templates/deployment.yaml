@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aegrail-engine.fullname" . }}
+  labels:
+    {{- include "aegrail-engine.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "aegrail-engine.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "aegrail-engine.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Re-roll pods on policy change. checksum forces a new pod
+        # template hash whenever the ConfigMap content changes, so
+        # `helm upgrade` with a different allowlist actually restarts
+        # the engine.
+        checksum/policy: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "aegrail-engine.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: {{ .Values.podSecurityContext.runAsNonRoot }}
+        runAsUser: {{ .Values.podSecurityContext.runAsUser }}
+      containers:
+        - name: aegrail-engine
+          image: {{ include "aegrail-engine.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --listen=:{{ .Values.proxy.listenPort }}
+          ports:
+            - name: proxy
+              containerPort: {{ .Values.proxy.listenPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: proxy
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 2
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: proxy
+            initialDelaySeconds: 1
+            periodSeconds: 5
+            timeoutSeconds: 2
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: {{ .Values.securityContext.allowPrivilegeEscalation }}
+            readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem }}
+            capabilities:
+              drop:
+                {{- toYaml .Values.securityContext.capabilities.drop | nindent 16 }}
+          volumeMounts:
+            - name: policy
+              mountPath: /etc/aegrail
+              readOnly: true
+      volumes:
+        - name: policy
+          configMap:
+            name: {{ include "aegrail-engine.fullname" . }}-policy

@@ -1,37 +1,58 @@
 # Default values for aegrail-engine.
-# This is a YAML-formatted file. Values shown are defaults; override on
-# the helm install / upgrade command line or with --values <file>.
+# YAML format. Override on the `helm install` / `helm upgrade` command
+# line, with --set, or with --values <file>.
 
+# -- override the chart's name in resource naming (rarely needed)
+nameOverride: ""
+
+# -- override the full resource name (rarely needed)
+fullnameOverride: ""
+
+# Container image. By default tag is empty, which makes the chart use
+# Chart.yaml's appVersion. Override .image.tag for a specific version
+# or for local development.
 image:
   repository: ghcr.io/arpitcoder/aegrail-engine
-  tag: ""  # defaults to chart.appVersion
+  tag: ""  # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
 
-# The HTTP forward proxy port the sidecar listens on inside the pod.
-# Agent containers point HTTP_PROXY / HTTPS_PROXY env vars at this.
+# -- imagePullSecrets for private registries
+imagePullSecrets: []
+
+# Number of engine pods. For cluster-shared deployment (the v0.1.0
+# default), >1 lets the engine ride out node failures. For pure
+# sidecar deployment (one engine per agent pod) you'd usually pin
+# this to 1 per agent pod via your own deployment, not via this chart.
+replicaCount: 1
+
+# HTTP forward proxy port the engine listens on inside its container.
+# Agent containers point HTTP_PROXY / HTTPS_PROXY env vars at the
+# Service's DNS name on this port.
 proxy:
   listenPort: 8080
 
 # Egress allowlist policy. Deny-by-default; only listed destinations
-# may be reached by the agent container.
-#
-# Each entry is a host or host:port. Wildcards (e.g. *.openai.com) are
-# planned for v0.2.0.
+# are permitted at v0.1.0+. Empty list = deny all.
+# Wildcards (e.g. *.openai.com) supported via fnmatch in the engine.
 policy:
   allowlist: []
   # Examples:
   #   - api.openai.com
   #   - api.anthropic.com
-  #   - generativelanguage.googleapis.com
+  #   - "*.openai.com"
 
-# Audit log configuration. Default: stdout (collected by the cluster's
-# log shipper). File mode writes to a mounted volume.
+# Audit log mode. v0.1.0 will write JSONL with a SHA-256 chain link
+# per event, compatible with the aegrail Python library's format.
 audit:
   mode: stdout  # one of: stdout, file
   filePath: /var/log/aegrail/audit.jsonl
 
-# Resource limits for the sidecar. The engine is a small Go binary;
-# default budgets are intentionally tight.
+# Service exposing the proxy port to other pods in the cluster.
+service:
+  type: ClusterIP
+  port: 8080
+
+# Resource budgets — intentionally tight; the engine is a small Go binary.
 resources:
   limits:
     cpu: 200m
@@ -40,19 +61,27 @@ resources:
     cpu: 50m
     memory: 32Mi
 
-# Sidecar injection mode. Manual: add the sidecar block to your pod
-# spec yourself. Webhook: install a mutating admission webhook
-# (planned v0.3.0) that injects automatically based on pod annotation.
-injection:
-  mode: manual
+# ServiceAccount the engine pod runs as.
+serviceAccount:
+  create: true
+  name: ""           # if blank, uses the resource fullname
+  annotations: {}
 
-# Security context for the sidecar container. Run as non-root with
-# minimal capabilities by default.
-securityContext:
+# Pod-level security context (applied to the pod spec)
+podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 65532
-  readOnlyRootFilesystem: true
+  runAsUser: 65532   # distroless nonroot
+
+# Container-level security context (applied to the engine container)
+securityContext:
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
   capabilities:
     drop:
       - ALL
+
+# Sidecar injection mode. v0.1.0 ships only `manual` (user adds the
+# engine container to their pod spec themselves). A mutating
+# admission webhook for automatic injection is planned for v0.3.0+.
+injection:
+  mode: manual

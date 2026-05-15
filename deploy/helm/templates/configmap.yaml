@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aegrail-engine.fullname" . }}-policy
+  labels:
+    {{- include "aegrail-engine.labels" . | nindent 4 }}
+data:
+  allowlist.yaml: |
+    # Egress allowlist for aegrail-engine. Hosts NOT in this list will
+    # be denied at the proxy boundary. Empty list = deny all.
+    allow:
+      {{- range .Values.policy.allowlist }}
+      - {{ . | quote }}
+      {{- else }}
+      []  # no destinations configured — every request will be denied
+      {{- end }}
