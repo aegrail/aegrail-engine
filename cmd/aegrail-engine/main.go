@@ -43,18 +43,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/arpitcoder/aegrail-engine/internal/audit"
-	"github.com/arpitcoder/aegrail-engine/internal/limits"
-	"github.com/arpitcoder/aegrail-engine/internal/mitm"
-	"github.com/arpitcoder/aegrail-engine/internal/policy"
-	"github.com/arpitcoder/aegrail-engine/internal/proxy"
+	"github.com/aegrail/aegrail-engine/internal/audit"
+	"github.com/aegrail/aegrail-engine/internal/limits"
+	"github.com/aegrail/aegrail-engine/internal/mitm"
+	"github.com/aegrail/aegrail-engine/internal/policy"
+	"github.com/aegrail/aegrail-engine/internal/proxy"
 )
 
 // Version is the source-level fallback. CI builds override this at
 // link time via `-ldflags "-X main.Version=$VERSION"` based on the
 // git tag, so the value here is what local `go run` / `go build`
 // reports — keep it in sync with the most recent tag for hygiene.
-var Version = "0.4.1"
+var Version = "0.4.2"
 
 func main() {
 	if err := run(); err != nil {

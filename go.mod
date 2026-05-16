@@ -1,3 +1,3 @@
-module github.com/arpitcoder/aegrail-engine
+module github.com/aegrail/aegrail-engine
 
 go 1.22

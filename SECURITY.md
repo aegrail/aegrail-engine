@@ -6,7 +6,7 @@ If you believe you've found a security vulnerability in `aegrail-engine`,
 **please do not open a public issue.** Instead, report it privately
 via GitHub's vulnerability reporting:
 
-https://github.com/arpitcoder/aegrail-engine/security/advisories/new
+https://github.com/aegrail/aegrail-engine/security/advisories/new
 
 We aim to acknowledge reports within 72 hours and resolve verified
 issues within 14 days for critical severities, longer for lower
@@ -28,7 +28,7 @@ severities.
 - Issues in the agent container itself (those belong to the agent's
   owner)
 - Issues in the audit log JSONL format (report those in the
-  [`aegrail`](https://github.com/arpitcoder/aegrail) repo)
+  [`aegrail`](https://github.com/aegrail/aegrail) repo)
 - Issues in dependencies (report upstream); we'll bump our
   dependency version once a fix is released
 - Configuration errors (open allowlist by mistake — that's an

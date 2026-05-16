@@ -8,7 +8,7 @@
 ## Quick install (planned)
 
 ```bash
-helm repo add aegrail https://arpitcoder.github.io/aegrail-engine
+helm repo add aegrail https://aegrail.github.io/aegrail-engine
 helm repo update
 helm install aegrail-engine aegrail/aegrail-engine \
   --set policy.allowlist[0]=api.openai.com \
@@ -34,7 +34,7 @@ spec:
         - name: NO_PROXY
           value: "localhost,127.0.0.1"
     - name: aegrail-engine
-      image: ghcr.io/arpitcoder/aegrail-engine:0.1.0
+      image: ghcr.io/aegrail/aegrail-engine:0.1.0
       args:
         - --listen=:8080
         - --allowlist-configmap=aegrail-allowlist
@@ -69,13 +69,13 @@ values; the sidecar will write to `/var/log/aegrail/audit.jsonl`
 inside an emptyDir volume that operators can mount.
 
 The audit format is identical to the
-[`aegrail`](https://github.com/arpitcoder/aegrail) Python library's
+[`aegrail`](https://github.com/aegrail/aegrail) Python library's
 audit log. Events from the engine and the library can be merged into
 a single chain when collected by the same log pipeline.
 
 ## Verifying the audit chain
 
-(See [`COMPLIANCE.md`](https://github.com/arpitcoder/aegrail/blob/main/COMPLIANCE.md)
+(See [`COMPLIANCE.md`](https://github.com/aegrail/aegrail/blob/main/COMPLIANCE.md)
 in the aegrail repo. The same `verify_chain()` function works on
 engine-produced logs.)
 

@@ -1,7 +1,7 @@
 # Contributing to aegrail-engine
 
 Thanks for considering a contribution. This repo is the Kubernetes
-enforcement engine that pairs with the [`aegrail`](https://github.com/arpitcoder/aegrail)
+enforcement engine that pairs with the [`aegrail`](https://github.com/aegrail/aegrail)
 Python library; contributions to either repo are welcomed under the
 same model.
 
@@ -10,7 +10,7 @@ same model.
 1. **Open an issue first** for anything beyond a typo fix or one-line
    change. This is to make sure we agree the work fits the project's
    scope (see roadmap-discipline rules in
-   [`CLAUDE.md`](https://github.com/arpitcoder/aegrail/blob/main/CLAUDE.md)
+   [`CLAUDE.md`](https://github.com/aegrail/aegrail/blob/main/CLAUDE.md)
    of the aegrail repo) before you sink time into it.
 2. **Fork + branch**: branch from `main`, work in your fork.
 3. **Small, reviewable PRs.** One change per PR; explain the *why*
@@ -28,7 +28,7 @@ same model.
 
 This repo holds the **Kubernetes deployment artifact** for
 aegrail: the Go sidecar, Helm chart, and related K8s configuration.
-The Python library lives in [`arpitcoder/aegrail`](https://github.com/arpitcoder/aegrail);
+The Python library lives in [`aegrail/aegrail`](https://github.com/aegrail/aegrail);
 cross-cutting changes (e.g. new event types) need a PR in both repos.
 
 What's in scope here:
@@ -47,7 +47,7 @@ What's out of scope here (belongs in the `aegrail` repo):
 
 ```bash
 # Clone
-git clone https://github.com/arpitcoder/aegrail-engine
+git clone https://github.com/aegrail/aegrail-engine
 cd aegrail-engine
 
 # Build

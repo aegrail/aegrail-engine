@@ -42,7 +42,7 @@ const LabelIdentity = "aegrail.io/identity"
 // engine sidecar. Loaded from the webhook's own env at startup.
 type Config struct {
 	// Image is the full container image reference for the engine,
-	// e.g. "ghcr.io/arpitcoder/aegrail-engine:0.2.0".
+	// e.g. "ghcr.io/aegrail/aegrail-engine:0.4.2".
 	Image string
 
 	// Allowlist is the comma-separated host patterns the engine

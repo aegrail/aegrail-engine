@@ -12,7 +12,7 @@ fullnameOverride: ""
 # Chart.yaml's appVersion. Override .image.tag for a specific version
 # or for local development.
 image:
-  repository: ghcr.io/arpitcoder/aegrail-engine
+  repository: ghcr.io/aegrail/aegrail-engine
   tag: ""  # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
 

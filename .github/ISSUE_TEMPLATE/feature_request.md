@@ -21,7 +21,7 @@ sketches are welcome.)
 Have you read the roadmap section in
 [`README.md`](../../README.md#roadmap) and the roadmap-discipline
 rules in
-[`CLAUDE.md`](https://github.com/arpitcoder/aegrail/blob/main/CLAUDE.md)
+[`CLAUDE.md`](https://github.com/aegrail/aegrail/blob/main/CLAUDE.md)
 of the aegrail repo? Where would this fit — a planned milestone, a
 new milestone, or out of scope?
 

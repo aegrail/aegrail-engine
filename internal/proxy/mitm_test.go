@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arpitcoder/aegrail-engine/internal/audit"
-	"github.com/arpitcoder/aegrail-engine/internal/limits"
-	"github.com/arpitcoder/aegrail-engine/internal/mitm"
-	"github.com/arpitcoder/aegrail-engine/internal/policy"
+	"github.com/aegrail/aegrail-engine/internal/audit"
+	"github.com/aegrail/aegrail-engine/internal/limits"
+	"github.com/aegrail/aegrail-engine/internal/mitm"
+	"github.com/aegrail/aegrail-engine/internal/policy"
 )
 
 // TestMITM_EndToEnd is the v0.4.0 gate. It spins up:

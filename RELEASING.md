@@ -1,7 +1,7 @@
 # Release discipline
 
 This file is the engine repo's equivalent of the release rule in
-[`CLAUDE.md`](https://github.com/arpitcoder/aegrail/blob/main/CLAUDE.md)
+[`CLAUDE.md`](https://github.com/aegrail/aegrail/blob/main/CLAUDE.md)
 on the Python repo. It documents the gate every tagged release has to
 pass *before* the tag is pushed.
 
@@ -48,7 +48,7 @@ an actual K8s deployment can answer.*
 7. `git tag vX.Y.Z`
 8. `git push origin main && git push origin vX.Y.Z`
 9. Container image pushed to the registry:
-   `docker push ghcr.io/arpitcoder/aegrail-engine:vX.Y.Z`
+   `docker push ghcr.io/aegrail/aegrail-engine:vX.Y.Z`
 10. Helm chart packaged and uploaded to the chart repository
 11. `gh release create vX.Y.Z --notes-from-tag`
 
@@ -104,6 +104,6 @@ the tag does not get pushed.
 ## When this rule was introduced
 
 2026-05-14, alongside the initial repo skeleton. The
-[`aegrail`](https://github.com/arpitcoder/aegrail) Python repo already
+[`aegrail`](https://github.com/aegrail/aegrail) Python repo already
 had an equivalent gate (real-LLM battle-test before PyPI upload) that
 caught issues before users saw them. This is the K8s-side equivalent.

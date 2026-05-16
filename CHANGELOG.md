@@ -6,6 +6,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-05-16
+
+### Changed — repository moved to `aegrail` GitHub organisation
+
+Metadata-only release. Both `aegrail-engine` and the companion
+`aegrail` Python SDK now live under the dedicated `aegrail`
+GitHub organisation:
+
+- Source: `github.com/arpitcoder/aegrail-engine` →
+  `github.com/aegrail/aegrail-engine` (GitHub redirects from the
+  old URL indefinitely).
+- Go module path: `github.com/arpitcoder/aegrail-engine` →
+  `github.com/aegrail/aegrail-engine`. Anyone importing the
+  internal packages needs to update their `go.mod` and imports.
+- Container image: `ghcr.io/arpitcoder/aegrail-engine:*` images
+  remain accessible (immutable). New images from v0.4.2 onward
+  publish under `ghcr.io/aegrail/aegrail-engine:*`.
+- Helm chart: published to `https://aegrail.github.io/aegrail-engine`
+  from v0.4.2's CI run. The old `https://arpitcoder.github.io/...`
+  URL becomes a 404 (GitHub Pages is owner-anchored — no redirect
+  for Pages itself). Users running `helm repo add` need to update
+  the URL.
+
+No behaviour change. No new features. Existing tagged releases
+(0.1.0-rc through 0.4.1) under the old paths continue to work for
+anyone who pinned them.
+
+### Why the move
+
+Credibility for adopters (security-adjacent OSS reads as "real
+project" under a dedicated org), optionality for future co-
+maintainers / contributors, and canonical artifact URLs that
+match the project name rather than the author's personal handle.
+
 ## [0.4.1] — 2026-05-16
 
 ### Added — webhook auto-injects the MITM CA trust into agent containers
@@ -547,7 +581,7 @@ that the deployment guides in the aegrail repo reference.
   `_AUDIT_STDOUT`, `_LISTEN` and the Deployment consumes them via
   `envFrom`. ConfigMap content hash drives pod re-roll on policy
   change. Optional `emptyDir` mount for the file-sink audit log.
-- **Container image** at `ghcr.io/arpitcoder/aegrail-engine:0.1.0-rc`
+- **Container image** at `ghcr.io/aegrail/aegrail-engine:0.1.0-rc`
   for `linux/amd64` and `linux/arm64`. Distroless nonroot base.
 
 ### Validated
@@ -571,6 +605,6 @@ v0.2.7 or later. Earlier SDK versions reject the new engine event
 types via Pydantic literal validation.
 
 This is the v0.3.0 milestone of the broader aegrail project. See
-[ARCHITECTURE.md](https://github.com/arpitcoder/aegrail/blob/main/ARCHITECTURE.md)
+[ARCHITECTURE.md](https://github.com/aegrail/aegrail/blob/main/ARCHITECTURE.md)
 in the aegrail repo for context on how this fits with the Python
 library.

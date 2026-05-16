@@ -11,7 +11,7 @@ A single Go binary that runs as a per-pod sidecar (or cluster-shared
 Deployment) and intercepts an agent container's outbound HTTP traffic.
 It enforces a deny-by-default egress allowlist, writes a SHA-256
 chained audit log compatible with the
-[`aegrail`](https://github.com/arpitcoder/aegrail) Python library's
+[`aegrail`](https://github.com/aegrail/aegrail) Python library's
 JSONL format, and exposes liveness/readiness endpoints for K8s.
 
 ## Non-goals for v0.1.0

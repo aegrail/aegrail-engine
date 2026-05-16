@@ -34,9 +34,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arpitcoder/aegrail-engine/internal/audit"
-	"github.com/arpitcoder/aegrail-engine/internal/llmparse"
-	"github.com/arpitcoder/aegrail-engine/internal/mitm"
+	"github.com/aegrail/aegrail-engine/internal/audit"
+	"github.com/aegrail/aegrail-engine/internal/llmparse"
+	"github.com/aegrail/aegrail-engine/internal/mitm"
 )
 
 // MITMConfig is the runtime configuration for TLS termination.

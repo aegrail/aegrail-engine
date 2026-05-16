@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arpitcoder/aegrail-engine/internal/audit"
-	"github.com/arpitcoder/aegrail-engine/internal/limits"
-	"github.com/arpitcoder/aegrail-engine/internal/policy"
+	"github.com/aegrail/aegrail-engine/internal/audit"
+	"github.com/aegrail/aegrail-engine/internal/limits"
+	"github.com/aegrail/aegrail-engine/internal/policy"
 )
 
 func limitsCounter(max int64) *limits.RequestCounter {

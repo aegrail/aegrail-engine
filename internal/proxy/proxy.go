@@ -30,9 +30,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/arpitcoder/aegrail-engine/internal/audit"
-	"github.com/arpitcoder/aegrail-engine/internal/limits"
-	"github.com/arpitcoder/aegrail-engine/internal/policy"
+	"github.com/aegrail/aegrail-engine/internal/audit"
+	"github.com/aegrail/aegrail-engine/internal/limits"
+	"github.com/aegrail/aegrail-engine/internal/policy"
 )
 
 // Proxy is the HTTP handler that enforces the egress allowlist and

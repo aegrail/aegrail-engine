@@ -8,7 +8,7 @@ import (
 
 func defaultConfig() Config {
 	return Config{
-		Image:            "ghcr.io/arpitcoder/aegrail-engine:0.2.0",
+		Image:            "ghcr.io/aegrail/aegrail-engine:0.4.2",
 		Allowlist:        "api.openai.com,*.anthropic.com",
 		AuditMode:        "stdout",
 		DefaultIdentity:  "auto-injected-v1",

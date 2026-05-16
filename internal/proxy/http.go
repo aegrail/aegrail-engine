@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arpitcoder/aegrail-engine/internal/llmparse"
+	"github.com/aegrail/aegrail-engine/internal/llmparse"
 )
 
 func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {

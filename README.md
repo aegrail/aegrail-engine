@@ -6,7 +6,7 @@
 
 A Go sidecar that enforces aegrail's runtime contract for AI agents at
 the network egress boundary — outside the agent process, in any
-language. Pairs with the [`aegrail`](https://github.com/arpitcoder/aegrail)
+language. Pairs with the [`aegrail`](https://github.com/aegrail/aegrail)
 Python library to provide defense-in-depth: the library enforces tool
 ACLs in-process; the engine enforces egress + audit at the pod level.
 
@@ -44,7 +44,7 @@ sidecar where it's enforced once and language-agnostic.
 
 This repo was created on 2026-05-14. Engineering is sequenced after
 `aegrail` v0.2.4 ships its in-Python interceptors. See
-[ARCHITECTURE.md](ARCHITECTURE.md) in the [`aegrail`](https://github.com/arpitcoder/aegrail/blob/main/ARCHITECTURE.md)
+[ARCHITECTURE.md](ARCHITECTURE.md) in the [`aegrail`](https://github.com/aegrail/aegrail/blob/main/ARCHITECTURE.md)
 repo for how the engine fits into the broader project.
 
 Track the v0.1.0 milestone for what's planned and current progress.
@@ -88,7 +88,7 @@ Track the v0.1.0 milestone for what's planned and current progress.
 - In-process enforcement (use the `aegrail` Python library for that)
 - Process / syscall isolation (use containers, gVisor, Firecracker)
 
-See [ARCHITECTURE.md](https://github.com/arpitcoder/aegrail/blob/main/ARCHITECTURE.md)
+See [ARCHITECTURE.md](https://github.com/aegrail/aegrail/blob/main/ARCHITECTURE.md)
 in the aegrail repo for the layered defense-in-depth model.
 
 ---
@@ -97,7 +97,7 @@ in the aegrail repo for the layered defense-in-depth model.
 
 ```bash
 # Add the Helm repository
-helm repo add aegrail https://arpitcoder.github.io/aegrail-engine
+helm repo add aegrail https://aegrail.github.io/aegrail-engine
 helm repo update
 
 # Install with default allowlist (deny-by-default)
@@ -143,7 +143,7 @@ spec:
   management
 
 The roadmap-discipline rules in
-[`CLAUDE.md`](https://github.com/arpitcoder/aegrail/blob/main/CLAUDE.md)
+[`CLAUDE.md`](https://github.com/aegrail/aegrail/blob/main/CLAUDE.md)
 of the aegrail repo govern when structural and feature work proceeds.
 
 ---
@@ -164,4 +164,4 @@ Do not open public issues for vulnerabilities.
 
 Apache License 2.0. See [LICENSE](LICENSE) for full terms.
 
-Copyright © 2026 [Arpit Nigam](https://github.com/arpitcoder).
+Copyright © 2026 [Arpit Nigam](https://github.com/aegrail).
