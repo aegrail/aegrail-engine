@@ -82,13 +82,21 @@ func run() error {
 	listen := envDefault("AEGRAIL_WEBHOOK_LISTEN", ":8443")
 
 	cfg := webhook.Config{
-		Image:            requireEnv("AEGRAIL_ENGINE_IMAGE"),
-		Allowlist:        os.Getenv("AEGRAIL_ENGINE_ALLOWLIST"),
-		AuditMode:        envDefault("AEGRAIL_ENGINE_AUDIT_MODE", "stdout"),
-		AuditFile:        envDefault("AEGRAIL_ENGINE_AUDIT_FILE", "/var/log/aegrail/audit.jsonl"),
-		MaxRequests:      os.Getenv("AEGRAIL_ENGINE_MAX_REQUESTS"),
-		RateLimit:        os.Getenv("AEGRAIL_ENGINE_RATE_LIMIT"),
-		MaxTokens:        os.Getenv("AEGRAIL_ENGINE_MAX_TOKENS"),
+		Image:       requireEnv("AEGRAIL_ENGINE_IMAGE"),
+		Allowlist:   os.Getenv("AEGRAIL_ENGINE_ALLOWLIST"),
+		AuditMode:   envDefault("AEGRAIL_ENGINE_AUDIT_MODE", "stdout"),
+		AuditFile:   envDefault("AEGRAIL_ENGINE_AUDIT_FILE", "/var/log/aegrail/audit.jsonl"),
+		MaxRequests: os.Getenv("AEGRAIL_ENGINE_MAX_REQUESTS"),
+		RateLimit:   os.Getenv("AEGRAIL_ENGINE_RATE_LIMIT"),
+		MaxTokens:   os.Getenv("AEGRAIL_ENGINE_MAX_TOKENS"),
+		// MITM trust injection (v0.4.1+). When set, the mutator
+		// adds a volume mount + SSL_CERT_FILE / REQUESTS_CA_BUNDLE /
+		// NODE_EXTRA_CA_CERTS env vars to every user container so
+		// the engine's MITM-presented leaf cert is accepted.
+		// The Secret must already exist in each labeled namespace.
+		MITMCASecretName: os.Getenv("AEGRAIL_WEBHOOK_MITM_CA_SECRET_NAME"),
+		MITMCACertKey:    envDefault("AEGRAIL_WEBHOOK_MITM_CA_CERT_KEY", "tls.crt"),
+		MITMCAMountPath:  envDefault("AEGRAIL_WEBHOOK_MITM_CA_MOUNT_PATH", "/etc/aegrail/mitm-ca/ca.crt"),
 		DefaultIdentity:  envDefault("AEGRAIL_ENGINE_DEFAULT_IDENTITY", "auto-injected/v1"),
 		EngineListenPort: envInt("AEGRAIL_ENGINE_LISTEN_PORT", 8080),
 	}

@@ -6,6 +6,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-05-16
+
+### Added — webhook auto-injects the MITM CA trust into agent containers
+
+Closes the loop on v0.4.0. When both the mutating webhook and MITM
+are enabled and the operator has placed the CA Secret in the
+labeled namespace, the webhook now adds:
+
+- A `volumes` entry referencing the CA Secret on the pod
+- A `volumeMounts` entry on every user container, mounting the
+  CA dir read-only
+- Three env vars on every user container:
+  - `SSL_CERT_FILE=/etc/aegrail/mitm-ca/ca.crt`
+  - `REQUESTS_CA_BUNDLE=/etc/aegrail/mitm-ca/ca.crt`
+  - `NODE_EXTRA_CA_CERTS=/etc/aegrail/mitm-ca/ca.crt`
+
+This covers the trust stores of every major HTTP library:
+- Python `requests` (REQUESTS_CA_BUNDLE)
+- Python `httpx` (SSL_CERT_FILE)
+- Node.js (NODE_EXTRA_CA_CERTS appends to system trust)
+- OpenSSL-based clients (SSL_CERT_FILE)
+- Go's net/http (reads SSL_CERT_FILE on Linux as a fallback)
+
+End-to-end pattern: agent dev writes zero aegrail code, platform
+team labels the namespace, every pod gets the engine sidecar +
+proxy env vars + MITM CA trust. Every HTTPS call to a MITM'd
+provider gets token-accounted at the network layer.
+
+### Webhook Config / env
+
+New webhook config fields surfaced via env on the webhook
+deployment:
+
+- `AEGRAIL_WEBHOOK_MITM_CA_SECRET_NAME` — required to enable trust
+  injection. Set automatically by Helm when `mitm.caSecretName` is
+  configured.
+- `AEGRAIL_WEBHOOK_MITM_CA_CERT_KEY` — optional, defaults to `tls.crt`.
+- `AEGRAIL_WEBHOOK_MITM_CA_MOUNT_PATH` — optional, defaults to
+  `/etc/aegrail/mitm-ca/ca.crt`.
+
+### Cross-namespace caveat (intentional)
+
+K8s does not allow Pod Secret mounts to reference Secrets in other
+namespaces. The webhook does NOT create per-namespace copies of
+the CA Secret — that would be a Kubernetes controller, not a
+mutating webhook. For v0.4.1 the operator pre-creates the Secret
+in each labeled namespace (typical pattern: a post-install Helm
+hook or a one-liner `kubectl get secret ... -o yaml | sed
+s/namespace:.*/namespace: target/ | kubectl apply -f -`).
+
+A first-class controller that watches namespaces and replicates
+the CA Secret is planned for v0.5.0.
+
+### Tests
+
+2 new tests in `internal/webhook/mutator_test.go`:
+- `TestBuildPatch_MITMCAInjectsVolumeAndTrustEnv` — verifies the
+  patch includes all three env vars + the volume mount + the pod-
+  level Secret-backed volume declaration when MITMCASecretName is
+  set.
+- `TestBuildPatch_NoMITMCAMeansNoTrustInjection` — regression: with
+  no MITM CA configured, none of the env vars or the volume
+  reference appear in the patch.
+
+Total webhook tests: 11. All engine + webhook + parser tests still
+green.
+
 ## [0.4.0] — 2026-05-16
 
 ### Added — HTTPS MITM mode for token enforcement on direct provider TLS

@@ -21,6 +21,7 @@ package webhook
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // EngineContainerName is the name we use for the injected engine
@@ -68,6 +69,24 @@ type Config struct {
 
 	// EngineListenPort is the port the sidecar listens on.
 	EngineListenPort int
+
+	// MITM trust injection (v0.4.1+). When MITMCASecretName is set,
+	// the webhook injects a volume mount + the three standard
+	// HTTPS trust env vars into every user container so the engine's
+	// TLS-terminated handshake is accepted client-side.
+	//
+	// The Secret must already exist in the target namespace (Helm
+	// can pre-create it via post-install hook or the operator
+	// kubectl-copies it). The webhook does NOT create cross-namespace
+	// Secrets — that's a controller's job.
+	MITMCASecretName string
+	// MITMCACertKey is the key inside the Secret holding the CA
+	// cert PEM. Defaults to "tls.crt" (kubernetes.io/tls Secret
+	// shape).
+	MITMCACertKey string
+	// MITMCAMountPath is where the CA file appears inside the
+	// agent container. Defaults to /etc/aegrail/mitm-ca/ca.crt.
+	MITMCAMountPath string
 }
 
 // patchOp is one JSON Patch operation per RFC 6902.
@@ -161,6 +180,22 @@ func BuildPatch(pod PodLike, cfg Config) ([]byte, error) {
 		{Name: "HTTPS_PROXY", Value: proxyURL},
 		{Name: "NO_PROXY", Value: "localhost,127.0.0.1,.svc,.cluster.local"},
 	}
+	// If MITM trust injection is enabled, add the three standard
+	// HTTPS trust env vars to the proxy env list so they go to
+	// every user container in the same patch operation as the
+	// HTTP_PROXY vars. Single source of truth for env injection.
+	caPath := cfg.mitmCAMountPath()
+	if cfg.MITMCASecretName != "" {
+		proxyEnv = append(proxyEnv,
+			envVar{Name: "SSL_CERT_FILE", Value: caPath},
+			envVar{Name: "REQUESTS_CA_BUNDLE", Value: caPath},
+			envVar{Name: "NODE_EXTRA_CA_CERTS", Value: caPath},
+			// Go-specific trust: Go reads the system trust store
+			// directly; SSL_CERT_FILE works on Linux distros where
+			// Go falls back to a known bundle location.
+		)
+	}
+
 	for idx, c := range pod.Spec.Containers {
 		if len(c.Env) == 0 {
 			// Container has no env array — create it with our three
@@ -170,16 +205,29 @@ func BuildPatch(pod PodLike, cfg Config) ([]byte, error) {
 				Path:  fmt.Sprintf("/spec/containers/%d/env", idx),
 				Value: proxyEnv,
 			})
-			continue
+		} else {
+			// Container has env — append to it.
+			for _, ev := range proxyEnv {
+				ops = append(ops, patchOp{
+					Op:    "add",
+					Path:  fmt.Sprintf("/spec/containers/%d/env/-", idx),
+					Value: ev,
+				})
+			}
 		}
-		// Container has env — append to it.
-		for _, ev := range proxyEnv {
-			ops = append(ops, patchOp{
-				Op:    "add",
-				Path:  fmt.Sprintf("/spec/containers/%d/env/-", idx),
-				Value: ev,
-			})
+
+		// MITM trust mount: add the CA volume mount to each user
+		// container so the env vars above point at an existing file.
+		if cfg.MITMCASecretName != "" {
+			mountOp := mitmCAVolumeMountOp(idx, caPath)
+			ops = append(ops, mountOp)
 		}
+	}
+
+	// MITM trust volume: declare the Secret-backed volume on the
+	// pod once (regardless of how many user containers there are).
+	if cfg.MITMCASecretName != "" {
+		ops = append(ops, mitmCAVolumeOp(cfg))
 	}
 
 	// 3. Append the engine sidecar container.
@@ -225,6 +273,63 @@ func (c Config) engineListenPort() int {
 		return c.EngineListenPort
 	}
 	return 8080
+}
+
+func (c Config) mitmCACertKey() string {
+	if c.MITMCACertKey != "" {
+		return c.MITMCACertKey
+	}
+	return "tls.crt"
+}
+
+func (c Config) mitmCAMountPath() string {
+	if c.MITMCAMountPath != "" {
+		return c.MITMCAMountPath
+	}
+	return "/etc/aegrail/mitm-ca/ca.crt"
+}
+
+// mitmCAVolumeMountOp adds the CA volume mount to the user
+// container at index `idx`. JSON Patch can't conditionally create
+// the volumeMounts array, so we use a known dir path and add the
+// entry. K8s tolerates an `add` on a missing field for arrays of
+// objects too.
+func mitmCAVolumeMountOp(idx int, caPath string) patchOp {
+	// Mount the CA volume at the directory containing the CA file
+	// (the file lives at /etc/aegrail/mitm-ca/ca.crt, so mount the
+	// dir /etc/aegrail/mitm-ca). The Secret's tls.crt key projects
+	// as a file named tls.crt inside that dir; we use subPath to
+	// project it as ca.crt so the env vars point at the right path.
+	dir := caPath[:strings.LastIndex(caPath, "/")]
+	return patchOp{
+		Op:   "add",
+		Path: fmt.Sprintf("/spec/containers/%d/volumeMounts/-", idx),
+		Value: map[string]any{
+			"name":      "aegrail-mitm-ca",
+			"mountPath": dir,
+			"readOnly":  true,
+		},
+	}
+}
+
+// mitmCAVolumeOp declares the Secret-backed volume on the pod.
+// Single op regardless of how many user containers mount it.
+func mitmCAVolumeOp(cfg Config) patchOp {
+	caPath := cfg.mitmCAMountPath()
+	caFileName := caPath[strings.LastIndex(caPath, "/")+1:]
+	return patchOp{
+		Op:   "add",
+		Path: "/spec/volumes/-",
+		Value: map[string]any{
+			"name": "aegrail-mitm-ca",
+			"secret": map[string]any{
+				"secretName": cfg.MITMCASecretName,
+				"items": []map[string]any{
+					{"key": cfg.mitmCACertKey(), "path": caFileName},
+				},
+			},
+		},
+	}
 }
 
 // buildEngineContainer returns the corev1.Container-shape map that

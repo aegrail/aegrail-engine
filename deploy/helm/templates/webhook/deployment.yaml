@@ -56,6 +56,10 @@ spec:
               value: {{ .Values.limits.maxTokens | quote }}
             {{- end }}
             {{- end }}
+            {{- if and .Values.mitm .Values.mitm.caSecretName }}
+            - name: AEGRAIL_WEBHOOK_MITM_CA_SECRET_NAME
+              value: {{ .Values.mitm.caSecretName | quote }}
+            {{- end }}
             - name: AEGRAIL_ENGINE_DEFAULT_IDENTITY
               value: {{ .Values.webhook.defaultIdentity | quote }}
             - name: AEGRAIL_ENGINE_LISTEN_PORT

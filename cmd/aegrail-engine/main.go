@@ -54,7 +54,7 @@ import (
 // link time via `-ldflags "-X main.Version=$VERSION"` based on the
 // git tag, so the value here is what local `go run` / `go build`
 // reports — keep it in sync with the most recent tag for hygiene.
-var Version = "0.4.0"
+var Version = "0.4.1"
 
 func main() {
 	if err := run(); err != nil {

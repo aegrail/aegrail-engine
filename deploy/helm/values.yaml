@@ -111,9 +111,20 @@ mitm:
   # fnmatch semantics as the egress allowlist.
   # Example: "api.openai.com,api.anthropic.com,*.bedrock-runtime.*.amazonaws.com"
   hosts: ""
-  # Name of a Kubernetes TLS secret in the engine's namespace
-  # holding the persistent CA. Optional; leave empty to auto-
-  # generate. The secret must have tls.crt and tls.key keys.
+  # Name of a Kubernetes TLS secret holding the persistent CA.
+  # Optional; leave empty to auto-generate. The secret must have
+  # tls.crt and tls.key keys.
+  #
+  # NOTE for v0.4.1+ webhook trust injection: the Secret must exist
+  # **in each labeled namespace** where aegrail.io/inject=enabled,
+  # because K8s does not allow cross-namespace Secret mounts.
+  # Operators typically:
+  #   1. Helm install pre-creates the Secret in the engine's
+  #      namespace.
+  #   2. A post-install Job or kubectl one-liner copies it to each
+  #      target namespace.
+  # The webhook does NOT create cross-namespace Secrets — that's a
+  # controller's job (planned for v0.5.0).
   caSecretName: ""
 
 # Audit log mode. v0.1.0 will write JSONL with a SHA-256 chain link

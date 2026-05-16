@@ -180,6 +180,54 @@ func TestBuildPatch_OptionalLimitsAndRateLimit(t *testing.T) {
 	}
 }
 
+func TestBuildPatch_MITMCAInjectsVolumeAndTrustEnv(t *testing.T) {
+	t.Parallel()
+	cfg := defaultConfig()
+	cfg.MITMCASecretName = "aegrail-mitm-ca"
+	patch, err := BuildPatch(samplePod("agent"), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchStr := string(patch)
+
+	// All three standard HTTPS trust env vars should be set
+	for _, env := range []string{"SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS"} {
+		if !strings.Contains(patchStr, `"name":"`+env+`"`) {
+			t.Errorf("patch missing %s env when MITM CA is configured", env)
+		}
+	}
+	// Volume mount on the user container
+	if !strings.Contains(patchStr, `"name":"aegrail-mitm-ca"`) {
+		t.Errorf("patch missing aegrail-mitm-ca volume reference")
+	}
+	if !strings.Contains(patchStr, `"mountPath":"/etc/aegrail/mitm-ca"`) {
+		t.Errorf("patch missing /etc/aegrail/mitm-ca mount path")
+	}
+	// Pod-level volume declaration
+	if !strings.Contains(patchStr, `"path":"/spec/volumes/-"`) {
+		t.Errorf("patch missing /spec/volumes/- volume declaration")
+	}
+	if !strings.Contains(patchStr, `"secretName":"aegrail-mitm-ca"`) {
+		t.Errorf("patch missing Secret reference")
+	}
+}
+
+func TestBuildPatch_NoMITMCAMeansNoTrustInjection(t *testing.T) {
+	t.Parallel()
+	// Default config has empty MITMCASecretName — no trust injection
+	cfg := defaultConfig()
+	patch, _ := BuildPatch(samplePod("agent"), cfg)
+	patchStr := string(patch)
+	for _, env := range []string{"SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS"} {
+		if strings.Contains(patchStr, `"name":"`+env+`"`) {
+			t.Errorf("patch should NOT include %s env when MITM CA is not configured", env)
+		}
+	}
+	if strings.Contains(patchStr, `"aegrail-mitm-ca"`) {
+		t.Errorf("patch should NOT reference the MITM CA volume when not configured")
+	}
+}
+
 func TestBuildPatch_FileAuditModeAddsFileEnv(t *testing.T) {
 	t.Parallel()
 	cfg := defaultConfig()
