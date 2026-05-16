@@ -14,10 +14,17 @@ ARG VERSION=0.0.0-dev
 RUN CGO_ENABLED=0 go build \
       -ldflags "-s -w -X main.Version=${VERSION}" \
       -o /out/aegrail-engine \
-      ./cmd/aegrail-engine
+      ./cmd/aegrail-engine \
+ && CGO_ENABLED=0 go build \
+      -ldflags "-s -w -X main.Version=${VERSION}" \
+      -o /out/aegrail-webhook \
+      ./cmd/aegrail-webhook
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/aegrail-engine /aegrail-engine
+COPY --from=build /out/aegrail-webhook /aegrail-webhook
 USER nonroot:nonroot
 EXPOSE 8080
+# Default ENTRYPOINT is the proxy; webhook Deployments override
+# command to ["/aegrail-webhook"] in their pod spec.
 ENTRYPOINT ["/aegrail-engine"]

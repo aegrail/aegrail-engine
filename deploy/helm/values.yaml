@@ -111,8 +111,34 @@ securityContext:
     drop:
       - ALL
 
-# Sidecar injection mode. v0.1.0 ships only `manual` (user adds the
-# engine container to their pod spec themselves). A mutating
-# admission webhook for automatic injection is planned for v0.3.0+.
+# Mutating admission webhook (v0.2.0+). When enabled, deploys an
+# admission controller that auto-injects the engine sidecar into
+# every pod created in namespaces labeled `aegrail.io/inject=enabled`.
+# Agent developers get protection without touching their Dockerfile
+# or code; platform teams enable it per namespace.
+#
+# Set webhook.enabled=true to turn on. Default off so existing
+# v0.1.x deployments are unaffected.
+webhook:
+  enabled: false
+  # Listen port inside the webhook container (TLS). 8443 is
+  # conventional for K8s admission webhooks.
+  listenPort: 8443
+  # failurePolicy on the MutatingWebhookConfiguration. "Ignore"
+  # fails open: an outage of the webhook does NOT block pod
+  # creation cluster-wide. The engine itself still fails closed at
+  # the proxy layer once injected (deny-by-default allowlist).
+  failurePolicy: Ignore
+  # Default value stamped on aegrail.io/identity for pods that
+  # don't already have the label set.
+  # K8s label values cannot contain '/', so use dash-separated
+  # version segments (e.g. "support-bot-v1", "research-agent.v2.1").
+  defaultIdentity: "auto-injected-v1"
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 128Mi }
+
+# Legacy/manual sidecar injection mode. Kept for v0.1.x deployments
+# that don't use the webhook.
 injection:
   mode: manual

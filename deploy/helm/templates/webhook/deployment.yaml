@@ -1,0 +1,95 @@
+{{- if .Values.webhook.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aegrail-engine.fullname" . }}-webhook
+  labels:
+    {{- include "aegrail-engine.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "aegrail-engine.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webhook
+  template:
+    metadata:
+      labels:
+        {{- include "aegrail-engine.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: webhook
+    spec:
+      serviceAccountName: {{ include "aegrail-engine.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: {{ .Values.podSecurityContext.runAsNonRoot }}
+        runAsUser: {{ .Values.podSecurityContext.runAsUser }}
+      containers:
+        - name: webhook
+          image: {{ include "aegrail-engine.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/aegrail-webhook"]
+          env:
+            - name: AEGRAIL_WEBHOOK_LISTEN
+              value: {{ printf ":%d" (int .Values.webhook.listenPort) | quote }}
+            - name: AEGRAIL_WEBHOOK_TLS_CERT
+              value: "/etc/aegrail/tls/tls.crt"
+            - name: AEGRAIL_WEBHOOK_TLS_KEY
+              value: "/etc/aegrail/tls/tls.key"
+            - name: AEGRAIL_ENGINE_IMAGE
+              value: {{ include "aegrail-engine.image" . | quote }}
+            - name: AEGRAIL_ENGINE_ALLOWLIST
+              value: {{ join "," .Values.policy.allowlist | quote }}
+            - name: AEGRAIL_ENGINE_AUDIT_MODE
+              value: {{ .Values.audit.mode | quote }}
+            - name: AEGRAIL_ENGINE_AUDIT_FILE
+              value: {{ .Values.audit.filePath | quote }}
+            {{- if .Values.limits }}
+            {{- if .Values.limits.maxRequests }}
+            - name: AEGRAIL_ENGINE_MAX_REQUESTS
+              value: {{ .Values.limits.maxRequests | quote }}
+            {{- end }}
+            {{- if .Values.limits.rate }}
+            - name: AEGRAIL_ENGINE_RATE_LIMIT
+              value: {{ .Values.limits.rate | quote }}
+            {{- end }}
+            {{- end }}
+            - name: AEGRAIL_ENGINE_DEFAULT_IDENTITY
+              value: {{ .Values.webhook.defaultIdentity | quote }}
+            - name: AEGRAIL_ENGINE_LISTEN_PORT
+              value: {{ printf "%d" (int .Values.proxy.listenPort) | quote }}
+          ports:
+            - name: https
+              containerPort: {{ .Values.webhook.listenPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              # Use a separate port for HTTP healthz... but the
+              # webhook serves /healthz on the same listener via
+              # HTTPS. K8s livenessProbe can use HTTPS scheme.
+              path: /healthz
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.webhook.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/aegrail/tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ include "aegrail-engine.fullname" . }}-webhook-tls
+{{- end -}}

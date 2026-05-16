@@ -6,6 +6,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-16
+
+### Added — mutating admission webhook (auto-injection)
+
+The "platform team enables it, dev team does nothing" release. When
+`webhook.enabled=true` in Helm values:
+
+1. The chart deploys an admission webhook server alongside the
+   engine — TLS-protected, with self-signed cert generated at
+   install time via Helm's `genCA` / `genSignedCert` (no cert-
+   manager dependency).
+2. A `MutatingWebhookConfiguration` registers the webhook for Pod
+   CREATE events in namespaces labeled `aegrail.io/inject=enabled`.
+3. For each labeled-namespace pod creation, the webhook returns a
+   JSON Patch that:
+   - Adds the engine sidecar container to the pod.
+   - Adds `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` env vars to
+     every user container so outbound traffic routes through the
+     engine on `localhost:8080`.
+   - Defaults the `aegrail.io/identity` label so the engine's
+     downward-API binding has a value to read.
+4. The engine container reads `agent_identity` from the
+   `aegrail.io/identity` pod label via the downward API (from
+   v0.1.1), so audit events stamp the actual agent's identity, not
+   the engine's hardcoded default.
+
+Agent dev writes zero aegrail code. Their Dockerfile is unchanged.
+The platform team flips a Helm value and labels a namespace; every
+new pod in that namespace gets the runtime governance layer.
+
+### New components
+
+- `cmd/aegrail-webhook/` — webhook HTTP server binary (~250 LOC).
+- `internal/webhook/` — admission mutation logic, `BuildPatch`
+  (~200 LOC) + 9 unit tests covering injection, idempotency, env
+  array creation vs append, label defaulting, optional limits, and
+  file-audit mode.
+- Helm templates: `webhook/secret.yaml`, `webhook/deployment.yaml`,
+  `webhook/service.yaml`, `webhook/mutating-config.yaml`. All
+  wrapped in `{{- if .Values.webhook.enabled -}}` so default
+  behavior is unchanged for existing v0.1.x deployments.
+
+### Dockerfile
+
+Now builds **two** binaries — `/aegrail-engine` and
+`/aegrail-webhook` — into the same distroless image. The engine
+`Deployment` keeps the default `ENTRYPOINT`; the webhook
+`Deployment` overrides `command: ["/aegrail-webhook"]`.
+
+### Validated
+
+End-to-end on a fresh kind cluster
+(`tests/kind/run-webhook.sh`, 9 scenarios):
+
+1. helm install with webhook.enabled=true — both Deployments Ready
+2. Test namespace labeled `aegrail.io/inject=enabled`
+3. Apply single-container test pod
+4. Pod becomes Ready with **2 containers** (user + injected engine)
+5. `HTTP_PROXY` / `HTTPS_PROXY` set to `http://localhost:8080` on
+   the user container
+6. `aegrail.io/identity` label defaulted on the pod
+7. Engine sidecar container reaches Ready inside the pod
+
+Plus the existing 14-scenario engine gate (`tests/kind/run.sh`)
+still passes — backward compatibility verified.
+
+### Operational notes
+
+- `failurePolicy: Ignore` on the MutatingWebhookConfiguration so
+  webhook outages do not block cluster-wide pod creation. The
+  engine itself still fails-closed at the proxy layer (deny-by-
+  default allowlist).
+- K8s label values cannot contain `/`. The default
+  `webhook.defaultIdentity` is `auto-injected-v1`; use dashes or
+  dots for version segments (e.g. `support-bot-v1`,
+  `research-agent.v2.1`).
+- The self-signed CA regenerates on every `helm upgrade`. For
+  production environments where short-lived cert rotation is
+  desired this is correct. For pinned-CA setups, integrate
+  cert-manager (future enhancement).
+
 ## [0.1.2] — 2026-05-16
 
 ### Added — network-layer request budgets
