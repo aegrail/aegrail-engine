@@ -73,13 +73,27 @@ spec:
             capabilities:
               drop:
                 {{- toYaml .Values.securityContext.capabilities.drop | nindent 16 }}
-          {{- if eq .Values.audit.mode "file" }}
+          {{- if or (eq .Values.audit.mode "file") (and .Values.mitm .Values.mitm.caSecretName) }}
           volumeMounts:
+            {{- if eq .Values.audit.mode "file" }}
             - name: audit
               mountPath: {{ .Values.audit.filePath | dir }}
+            {{- end }}
+            {{- if and .Values.mitm .Values.mitm.caSecretName }}
+            - name: mitm-ca
+              mountPath: /etc/aegrail/mitm-ca
+              readOnly: true
+            {{- end }}
           {{- end }}
-      {{- if eq .Values.audit.mode "file" }}
+      {{- if or (eq .Values.audit.mode "file") (and .Values.mitm .Values.mitm.caSecretName) }}
       volumes:
+        {{- if eq .Values.audit.mode "file" }}
         - name: audit
           emptyDir: {}
+        {{- end }}
+        {{- if and .Values.mitm .Values.mitm.caSecretName }}
+        - name: mitm-ca
+          secret:
+            secretName: {{ .Values.mitm.caSecretName }}
+        {{- end }}
       {{- end }}

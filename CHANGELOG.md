@@ -6,6 +6,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-16
+
+### Added — HTTPS MITM mode for token enforcement on direct provider TLS
+
+The last gap in the engine-side coverage story. When the operator
+opts into `mitm.hosts`, the engine terminates TLS for CONNECT
+requests whose destination matches one of the configured patterns,
+parses the decrypted response for tokens via the v0.3.x llmparse
+machinery, and re-encrypts to the real upstream. This is the only
+way to enforce token budgets on direct HTTPS traffic to public
+provider endpoints (api.openai.com, api.anthropic.com, Bedrock,
+Vertex) when the agent never imported the SDK.
+
+#### New components
+
+- **`internal/mitm/`** — CA + leaf cert factory.
+  `NewAuthority(validity)` mints a self-signed CA at engine startup
+  (useful for dev / kind). `LoadAuthority(certPath, keyPath)` loads
+  an operator-pinned CA from PEM files (production). Per-upstream
+  leaf certs are signed on demand, cached for 24h. 5 unit tests
+  covering CA generation, leaf signing + verification, host-based
+  caching, regional Bedrock hostnames, and tls.Config integration.
+
+- **`internal/proxy/mitm.go`** — TLS-terminating CONNECT handler.
+  When `MITMConfig.shouldMITM(host)` is true, the proxy:
+  1. Mints a leaf cert for the destination host.
+  2. Hijacks the client connection, writes 200 Connection
+     Established, performs TLS handshake using the leaf cert.
+  3. Reads HTTP requests off the TLS-terminated client conn.
+  4. Forwards each to the real upstream over TLS using system
+     trust to verify the provider's real cert.
+  5. Parses the response body via `llmparse`, augments the audit
+     event with `llm_model` / `tokens_in` / `tokens_out` / `mitm:
+     true`, and writes the response back to the client.
+  6. Accumulates against the TokenBudget if configured.
+
+- **End-to-end test** (`internal/proxy/mitm_test.go`,
+  `TestMITM_EndToEnd_OpenAIChatCompletions`): real TLS upstream
+  serving an OpenAI-shaped response, engine MITM'ing with a fresh
+  CA, client trusting that CA, request flows end-to-end. Verifies
+  body integrity, audit event, token parsing, and budget
+  accumulation. Plus a regression test that hosts NOT in the MITM
+  patterns continue to tunnel opaquely.
+
+#### New env vars
+
+- `AEGRAIL_ENGINE_MITM_HOSTS` — comma-separated host patterns
+  (fnmatch). Empty = MITM disabled (default).
+- `AEGRAIL_ENGINE_MITM_CA_CERT_FILE` /
+  `AEGRAIL_ENGINE_MITM_CA_KEY_FILE` — optional CA PEM files. If
+  unset, the engine generates a fresh CA at startup and logs the
+  PEM (look at the engine pod's logs to capture it).
+
+#### Helm chart
+
+New `mitm.hosts` and `mitm.caSecretName` values. When `caSecretName`
+is set, the chart mounts the named Secret at `/etc/aegrail/mitm-ca`
+and sets `AEGRAIL_ENGINE_MITM_CA_CERT_FILE` /
+`AEGRAIL_ENGINE_MITM_CA_KEY_FILE` accordingly. Off by default;
+existing deployments unaffected.
+
+#### Parser relaxation
+
+URL recognition for OpenAI Chat Completions, Responses, and
+Anthropic Messages is now **path-based** instead of host-anchored.
+Coverage now includes Azure OpenAI proxies, litellm, vLLM, and
+any gateway exposing the standard paths. Bedrock and Vertex stay
+host-anchored because their path shapes are otherwise generic.
+
+#### What's NOT in v0.4.0 (deferred to v0.4.1)
+
+**CA trust distribution into agent containers.** The engine-side
+MITM machinery works, but for HTTPS traffic from the agent to
+reach the engine without TLS verification failures, the engine's
+CA must be in the agent container's trust store. In v0.4.0 the
+operator does this manually:
+
+1. Capture the CA PEM from the engine pod's logs (or pre-create
+   it as a Secret and point `mitm.caSecretName` at it).
+2. Mount the CA into the agent container.
+3. Set `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `NODE_EXTRA_CA_CERTS`
+   env vars on the agent container pointing at the CA file.
+
+The v0.4.1 webhook will inject all four automatically on labeled
+namespaces. The deferral is scope discipline — engine-side MITM
+is a self-contained, testable unit; the webhook-side distribution
+is its own well-understood feature.
+
+### Limitation acknowledged
+
+HTTP/1.1 only on the MITM path. HTTP/2 keep-alive over the
+terminated connection is not handled in v0.4.0 — each request
+opens a fresh CONNECT. Modern clients usually do this anyway; we'll
+revisit if a design partner reports throughput issues.
+
 ## [0.3.1] — 2026-05-16
 
 ### Added — Anthropic, Bedrock, Vertex AI / Gemini parsers

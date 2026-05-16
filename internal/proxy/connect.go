@@ -57,6 +57,15 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// MITM dispatch (v0.4.0+). If this host is configured for TLS
+	// termination, hand off to the MITM handler which decrypts,
+	// parses, audits, and re-encrypts. Otherwise fall through to
+	// the opaque-tunnel path below.
+	if p.MITM.shouldMITM(host) {
+		p.handleMITM(w, r, target, host)
+		return
+	}
+
 	// Dial upstream BEFORE acknowledging the tunnel so we can fail
 	// cleanly with 502 if the destination is unreachable. The
 	// alternative (200 then dial) leaves the client connected to

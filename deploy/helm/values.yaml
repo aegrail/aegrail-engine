@@ -77,10 +77,44 @@ limits:
   # with reason=token_budget_exceeded and HTTP 429. The current
   # in-flight call always finishes accounting — we never lose
   # already-consumed work. Note: HTTPS CONNECT tunnels are opaque
-  # to the parser; token enforcement only fires on plain-HTTP
-  # forwards (i.e., when TLS is terminated upstream of aegrail,
-  # or for in-cluster HTTP traffic to a model server like Ollama).
+  # to the parser unless MITM is enabled (see `mitm` below); token
+  # enforcement otherwise only fires on plain-HTTP forwards.
   maxTokens: 0
+
+# TLS MITM mode (v0.4.0+). When `mitm.hosts` is non-empty, the engine
+# terminates TLS for CONNECT requests whose target matches one of
+# the patterns, decrypts the traffic, parses for tokens, and
+# re-encrypts to the real upstream — the only way to get token
+# accounting on direct HTTPS traffic to public providers.
+#
+# **Operator responsibility:** the engine's CA must be trusted by
+# the agent container. Without that, TLS handshake fails client-
+# side. Distribution patterns:
+#
+#   - Mount the CA into the agent container at a known path
+#   - Set REQUESTS_CA_BUNDLE, SSL_CERT_FILE, NODE_EXTRA_CA_CERTS
+#     env vars on the agent container pointing at that path
+#
+# In v0.4.0 the operator does this distribution manually. The v0.4.1
+# webhook will auto-inject the CA + env vars on labeled namespaces.
+#
+# CA strategy:
+#   - Leave `caCertSecret` / `caKeySecret` empty → engine generates
+#     a fresh CA at startup, logs the PEM (look at the engine pod's
+#     logs to retrieve it). Fine for dev / kind.
+#   - Set both to a Secret containing tls.crt + tls.key → engine
+#     loads the pinned CA. Stable across restarts; required for
+#     production where you don't want to redistribute trust on
+#     every engine reroll.
+mitm:
+  # Comma-separated host patterns. Empty = MITM disabled. Same
+  # fnmatch semantics as the egress allowlist.
+  # Example: "api.openai.com,api.anthropic.com,*.bedrock-runtime.*.amazonaws.com"
+  hosts: ""
+  # Name of a Kubernetes TLS secret in the engine's namespace
+  # holding the persistent CA. Optional; leave empty to auto-
+  # generate. The secret must have tls.crt and tls.key keys.
+  caSecretName: ""
 
 # Audit log mode. v0.1.0 will write JSONL with a SHA-256 chain link
 # per event, compatible with the aegrail Python library's format.

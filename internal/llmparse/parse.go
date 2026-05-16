@@ -46,18 +46,25 @@ type Usage struct {
 func Recognise(u *url.URL) bool {
 	host, path := u.Hostname(), strings.TrimRight(u.Path, "/")
 	switch {
-	case host == "api.openai.com" && strings.HasSuffix(path, "/v1/chat/completions"),
-		host == "api.openai.com" && strings.HasSuffix(path, "/v1/responses"):
+	// OpenAI-compatible shape (path-only; covers OpenAI, Azure OpenAI
+	// proxies, litellm, vLLM, any gateway exposing the standard path).
+	case strings.HasSuffix(path, "/v1/chat/completions"),
+		strings.HasSuffix(path, "/v1/responses"):
 		return true
-	case host == "api.anthropic.com" && strings.HasSuffix(path, "/v1/messages"):
+	// Anthropic-compatible shape (path-only).
+	case strings.HasSuffix(path, "/v1/messages"):
 		return true
+	// Bedrock (host-anchored because the path shape "/model/X/invoke"
+	// is otherwise generic).
 	case isBedrockRuntimeHost(host) && isBedrockInvokePath(path):
 		return true
+	// Vertex AI / Gemini (host-anchored on aiplatform / Gemini hosts;
+	// path-anchored on the :generateContent / :predict suffix).
 	case isVertexAIHost(host) && isVertexPath(path):
 		return true
+	// Ollama (any host — usually localhost / in-cluster service).
 	case strings.HasSuffix(path, "/api/generate"),
 		strings.HasSuffix(path, "/api/chat"):
-		// Ollama (any host — usually localhost / in-cluster service)
 		return true
 	}
 	return false
@@ -109,11 +116,11 @@ func ParseResponse(reqURL *url.URL, body []byte, headers http.Header) Usage {
 	}
 	host, path := reqURL.Hostname(), strings.TrimRight(reqURL.Path, "/")
 	switch {
-	case host == "api.openai.com" && strings.HasSuffix(path, "/v1/chat/completions"):
+	case strings.HasSuffix(path, "/v1/chat/completions"):
 		return parseOpenAIChat(body)
-	case host == "api.openai.com" && strings.HasSuffix(path, "/v1/responses"):
+	case strings.HasSuffix(path, "/v1/responses"):
 		return parseOpenAIResponses(body)
-	case host == "api.anthropic.com" && strings.HasSuffix(path, "/v1/messages"):
+	case strings.HasSuffix(path, "/v1/messages"):
 		return parseAnthropicMessages(body)
 	case isBedrockRuntimeHost(host) && isBedrockInvokePath(path):
 		return parseBedrock(body, headers, path)
@@ -192,8 +199,8 @@ func parseOllama(body []byte) Usage {
 type anthropicMessagesResp struct {
 	Model string `json:"model"`
 	Usage struct {
-		InputTokens             int `json:"input_tokens"`
-		OutputTokens            int `json:"output_tokens"`
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
 		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 	} `json:"usage"`

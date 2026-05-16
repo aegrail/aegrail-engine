@@ -28,3 +28,12 @@ data:
   AEGRAIL_ENGINE_MAX_TOKENS: {{ .Values.limits.maxTokens | quote }}
   {{- end }}
   {{- end }}
+  {{- if .Values.mitm }}
+  {{- if .Values.mitm.hosts }}
+  AEGRAIL_ENGINE_MITM_HOSTS: {{ .Values.mitm.hosts | quote }}
+  {{- end }}
+  {{- if .Values.mitm.caSecretName }}
+  AEGRAIL_ENGINE_MITM_CA_CERT_FILE: "/etc/aegrail/mitm-ca/tls.crt"
+  AEGRAIL_ENGINE_MITM_CA_KEY_FILE: "/etc/aegrail/mitm-ca/tls.key"
+  {{- end }}
+  {{- end }}

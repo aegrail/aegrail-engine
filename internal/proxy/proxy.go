@@ -58,8 +58,17 @@ type Proxy struct {
 	// (v0.3.0+). Nil = unlimited. When the budget is over before a
 	// request, the call is denied with reason="token_budget_exceeded"
 	// and HTTP 429. HTTPS CONNECT tunnels are opaque to the parser
-	// so token enforcement only fires on plain-HTTP forwards.
+	// so token enforcement only fires on plain-HTTP forwards — unless
+	// MITM is enabled for the destination host.
 	TokenBudget *limits.TokenBudget
+
+	// MITM, when set, enables TLS termination on CONNECT requests
+	// whose target host matches one of the configured patterns
+	// (v0.4.0+). Without trust distribution to the agent
+	// container, MITM'd connections will fail TLS verification on
+	// the client side — this is opt-in and the operator is
+	// responsible for ensuring the CA is trusted.
+	MITM *MITMConfig
 
 	// DialTimeout caps how long the proxy waits when establishing a
 	// CONNECT tunnel to upstream. Zero defaults to 10s.

@@ -45,6 +45,7 @@ import (
 
 	"github.com/arpitcoder/aegrail-engine/internal/audit"
 	"github.com/arpitcoder/aegrail-engine/internal/limits"
+	"github.com/arpitcoder/aegrail-engine/internal/mitm"
 	"github.com/arpitcoder/aegrail-engine/internal/policy"
 	"github.com/arpitcoder/aegrail-engine/internal/proxy"
 )
@@ -53,7 +54,7 @@ import (
 // link time via `-ldflags "-X main.Version=$VERSION"` based on the
 // git tag, so the value here is what local `go run` / `go build`
 // reports — keep it in sync with the most recent tag for hygiene.
-var Version = "0.3.1"
+var Version = "0.4.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -152,6 +153,19 @@ func run() error {
 		}
 	}
 
+	// MITM mode (v0.4.0+). Off by default — operators opt in via
+	// AEGRAIL_ENGINE_MITM_HOSTS. Without trust distribution to the
+	// agent container, MITM'd HTTPS connections will fail TLS
+	// verification client-side; that's an operator responsibility.
+	mitmCfg, err := buildMITMConfig()
+	if err != nil {
+		return fmt.Errorf("mitm: %w", err)
+	}
+	if mitmCfg != nil {
+		log.Printf("aegrail-engine: MITM enabled for hosts: %v", mitmCfg.HostPatterns)
+		log.Printf("aegrail-engine: CA cert (PEM, for agent trust):\n%s", mitmCfg.Authority.CAPEM())
+	}
+
 	prox := &proxy.Proxy{
 		Policy:      pol,
 		Sink:        sink,
@@ -159,6 +173,7 @@ func run() error {
 		Counter:     counter,
 		Limiter:     limiter,
 		TokenBudget: tokenBudget,
+		MITM:        mitmCfg,
 	}
 	prox.EmitEngineStart(Version)
 
@@ -247,6 +262,51 @@ func livenessHandler(w http.ResponseWriter, _ *http.Request) {
 func readinessHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, "ready\n")
+}
+
+// buildMITMConfig constructs a *proxy.MITMConfig from env. Returns
+// (nil, nil) when AEGRAIL_ENGINE_MITM_HOSTS is empty (the off path).
+// When hosts are configured but no CA file path is given, the
+// engine generates a fresh CA at startup and logs the PEM so the
+// operator can pick it up for trust distribution. For pinned-CA
+// setups (production), the operator mounts a CA secret and points
+// the env vars at it.
+func buildMITMConfig() (*proxy.MITMConfig, error) {
+	raw := strings.TrimSpace(os.Getenv("AEGRAIL_ENGINE_MITM_HOSTS"))
+	if raw == "" {
+		return nil, nil
+	}
+	patterns := make([]string, 0)
+	for _, p := range strings.Split(raw, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			patterns = append(patterns, p)
+		}
+	}
+	if len(patterns) == 0 {
+		return nil, nil
+	}
+
+	certPath := os.Getenv("AEGRAIL_ENGINE_MITM_CA_CERT_FILE")
+	keyPath := os.Getenv("AEGRAIL_ENGINE_MITM_CA_KEY_FILE")
+	var authority *mitm.Authority
+	var err error
+	if certPath != "" && keyPath != "" {
+		authority, err = mitm.LoadAuthority(certPath, keyPath)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		authority, err = mitm.NewAuthority(365 * 24 * time.Hour)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &proxy.MITMConfig{
+		Authority:    authority,
+		HostPatterns: patterns,
+	}, nil
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
