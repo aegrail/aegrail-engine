@@ -1,12 +1,18 @@
-<p align="center">
-  <img src=".assets/logo.svg" alt="aegrail-engine" width="120">
-</p>
+<div align="center">
+
+<img src=".assets/logo.svg" alt="aegrail-engine" width="140">
 
 # aegrail-engine
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-
 **The Kubernetes-deployable enforcement engine for `aegrail`.**
+
+[![Release](https://img.shields.io/github/v/release/aegrail/aegrail-engine?style=flat-square&label=Release&color=2DD4BF&labelColor=0F172A)](https://github.com/aegrail/aegrail-engine/releases)
+[![Image](https://img.shields.io/badge/ghcr.io-aegrail/aegrail--engine-2DD4BF?style=flat-square&labelColor=0F172A&logo=docker&logoColor=white)](https://github.com/aegrail/aegrail-engine/pkgs/container/aegrail-engine)
+[![Helm](https://img.shields.io/badge/helm-chart-2DD4BF?style=flat-square&labelColor=0F172A&logo=helm&logoColor=white)](https://aegrail.github.io/aegrail-engine)
+[![License](https://img.shields.io/badge/license-Apache%202.0-2DD4BF?style=flat-square&labelColor=0F172A)](LICENSE)
+[![SDK](https://img.shields.io/pypi/v/aegrail?style=flat-square&label=SDK&color=2DD4BF&labelColor=0F172A&logo=python&logoColor=white)](https://pypi.org/project/aegrail/)
+
+</div>
 
 A Go sidecar that enforces aegrail's runtime contract for AI agents at
 the network egress boundary — outside the agent process, in any
