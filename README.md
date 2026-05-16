@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".assets/logo.svg" alt="aegrail-engine" width="120">
+</p>
+
 # aegrail-engine
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
