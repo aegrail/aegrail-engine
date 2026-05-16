@@ -24,7 +24,9 @@ package llmparse
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -47,6 +49,12 @@ func Recognise(u *url.URL) bool {
 	case host == "api.openai.com" && strings.HasSuffix(path, "/v1/chat/completions"),
 		host == "api.openai.com" && strings.HasSuffix(path, "/v1/responses"):
 		return true
+	case host == "api.anthropic.com" && strings.HasSuffix(path, "/v1/messages"):
+		return true
+	case isBedrockRuntimeHost(host) && isBedrockInvokePath(path):
+		return true
+	case isVertexAIHost(host) && isVertexPath(path):
+		return true
 	case strings.HasSuffix(path, "/api/generate"),
 		strings.HasSuffix(path, "/api/chat"):
 		// Ollama (any host — usually localhost / in-cluster service)
@@ -55,11 +63,47 @@ func Recognise(u *url.URL) bool {
 	return false
 }
 
-// ParseResponse parses a JSON LLM response body and returns the
-// extracted Usage. Tolerant of unknown shapes — returns a zero
-// Usage with Recognised=false rather than erroring, so the caller
-// can decide whether to budget-enforce or just pass through.
-func ParseResponse(reqURL *url.URL, body []byte) Usage {
+func isBedrockRuntimeHost(host string) bool {
+	// bedrock-runtime.<region>.amazonaws.com
+	return strings.HasPrefix(host, "bedrock-runtime.") &&
+		strings.HasSuffix(host, ".amazonaws.com")
+}
+
+func isBedrockInvokePath(path string) bool {
+	// /model/<id>/invoke, /model/<id>/invoke-with-response-stream,
+	// /model/<id>/converse, /model/<id>/converse-stream
+	if !strings.HasPrefix(path, "/model/") {
+		return false
+	}
+	return strings.HasSuffix(path, "/invoke") ||
+		strings.HasSuffix(path, "/invoke-with-response-stream") ||
+		strings.HasSuffix(path, "/converse") ||
+		strings.HasSuffix(path, "/converse-stream")
+}
+
+func isVertexAIHost(host string) bool {
+	// us-central1-aiplatform.googleapis.com, etc.
+	// Also: generativelanguage.googleapis.com (AI Studio / Gemini API)
+	return strings.HasSuffix(host, "-aiplatform.googleapis.com") ||
+		host == "aiplatform.googleapis.com" ||
+		host == "generativelanguage.googleapis.com"
+}
+
+func isVertexPath(path string) bool {
+	// Vertex AI: …:generateContent, :streamGenerateContent, :predict
+	// Gemini AI Studio: /v1beta/models/<id>:generateContent
+	return strings.Contains(path, ":generateContent") ||
+		strings.Contains(path, ":streamGenerateContent") ||
+		strings.Contains(path, ":predict")
+}
+
+// ParseResponse parses an LLM response and returns the extracted
+// Usage. The headers argument is consulted for providers that
+// report usage out-of-band (notably Bedrock, which puts token
+// counts in x-amzn-bedrock-*-token-count response headers).
+// Tolerant of unknown shapes — returns a zero Usage with
+// Recognised=false rather than erroring.
+func ParseResponse(reqURL *url.URL, body []byte, headers http.Header) Usage {
 	if !Recognise(reqURL) {
 		return Usage{}
 	}
@@ -69,6 +113,12 @@ func ParseResponse(reqURL *url.URL, body []byte) Usage {
 		return parseOpenAIChat(body)
 	case host == "api.openai.com" && strings.HasSuffix(path, "/v1/responses"):
 		return parseOpenAIResponses(body)
+	case host == "api.anthropic.com" && strings.HasSuffix(path, "/v1/messages"):
+		return parseAnthropicMessages(body)
+	case isBedrockRuntimeHost(host) && isBedrockInvokePath(path):
+		return parseBedrock(body, headers, path)
+	case isVertexAIHost(host) && isVertexPath(path):
+		return parseVertex(body)
 	case strings.HasSuffix(path, "/api/generate"),
 		strings.HasSuffix(path, "/api/chat"):
 		return parseOllama(body)
@@ -135,6 +185,90 @@ func parseOllama(body []byte) Usage {
 		Model:      r.Model,
 		TokensIn:   r.PromptEvalCount,
 		TokensOut:  r.EvalCount,
+		Recognised: true,
+	}
+}
+
+type anthropicMessagesResp struct {
+	Model string `json:"model"`
+	Usage struct {
+		InputTokens             int `json:"input_tokens"`
+		OutputTokens            int `json:"output_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	} `json:"usage"`
+}
+
+func parseAnthropicMessages(body []byte) Usage {
+	var r anthropicMessagesResp
+	if err := json.Unmarshal(body, &r); err != nil {
+		return Usage{Recognised: true}
+	}
+	return Usage{
+		Model:      r.Model,
+		TokensIn:   r.Usage.InputTokens,
+		TokensOut:  r.Usage.OutputTokens,
+		Recognised: true,
+	}
+}
+
+// parseBedrock pulls token counts from Bedrock's response headers
+// (x-amzn-bedrock-input-token-count, x-amzn-bedrock-output-token-count).
+// The body is the wrapped provider payload (Anthropic, AI21, Cohere,
+// Meta, etc.); model identification comes from the URL path
+// (/model/<model-id>/invoke).
+func parseBedrock(_ []byte, headers http.Header, path string) Usage {
+	tokensIn, _ := strconv.Atoi(headers.Get("X-Amzn-Bedrock-Input-Token-Count"))
+	tokensOut, _ := strconv.Atoi(headers.Get("X-Amzn-Bedrock-Output-Token-Count"))
+	return Usage{
+		Model:      modelIDFromBedrockPath(path),
+		TokensIn:   tokensIn,
+		TokensOut:  tokensOut,
+		Recognised: true,
+	}
+}
+
+// modelIDFromBedrockPath extracts the model id from a path like
+// /model/anthropic.claude-3-5-sonnet-20240620-v1:0/invoke.
+func modelIDFromBedrockPath(path string) string {
+	const prefix = "/model/"
+	if !strings.HasPrefix(path, prefix) {
+		return ""
+	}
+	rest := path[len(prefix):]
+	for _, suffix := range []string{
+		"/invoke-with-response-stream",
+		"/invoke",
+		"/converse-stream",
+		"/converse",
+	} {
+		if strings.HasSuffix(rest, suffix) {
+			return strings.TrimSuffix(rest, suffix)
+		}
+	}
+	return rest
+}
+
+type vertexResp struct {
+	// Gemini / Vertex generateContent shape
+	UsageMetadata struct {
+		PromptTokenCount     int `json:"promptTokenCount"`
+		CandidatesTokenCount int `json:"candidatesTokenCount"`
+		TotalTokenCount      int `json:"totalTokenCount"`
+	} `json:"usageMetadata"`
+	// Some Vertex responses include model name at top level
+	ModelVersion string `json:"modelVersion"`
+}
+
+func parseVertex(body []byte) Usage {
+	var r vertexResp
+	if err := json.Unmarshal(body, &r); err != nil {
+		return Usage{Recognised: true}
+	}
+	return Usage{
+		Model:      r.ModelVersion,
+		TokensIn:   r.UsageMetadata.PromptTokenCount,
+		TokensOut:  r.UsageMetadata.CandidatesTokenCount,
 		Recognised: true,
 	}
 }

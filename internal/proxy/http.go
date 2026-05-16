@@ -106,7 +106,7 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 			_ = resp.Body.Close()
-			usage = llmparse.ParseResponse(r.URL, body)
+			usage = llmparse.ParseResponse(r.URL, body, resp.Header)
 			// Restore the body so the client receives it intact.
 			resp.Body = io.NopCloser(bytes.NewReader(body))
 			resp.ContentLength = int64(len(body))

@@ -6,6 +6,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-05-16
+
+### Added — Anthropic, Bedrock, Vertex AI / Gemini parsers
+
+The token-parsing surface from v0.3.0 now covers the major
+commercial LLM providers beyond OpenAI and Ollama:
+
+- **Anthropic Messages** — `api.anthropic.com/v1/messages`
+  parses `usage.input_tokens` + `usage.output_tokens` from the
+  response body. Also reads `cache_creation_input_tokens` and
+  `cache_read_input_tokens` for prompt-cache attribution
+  (carried through into the audit event in a later release).
+- **AWS Bedrock Runtime** — `bedrock-runtime.<region>.amazonaws.com/
+  model/<id>/invoke` (and the streaming + Converse variants). Token
+  counts come from the response **headers**
+  `X-Amzn-Bedrock-Input-Token-Count` /
+  `X-Amzn-Bedrock-Output-Token-Count`, not the body — Bedrock is
+  the only major provider that reports out-of-band, so the
+  parser's signature was extended to accept response headers. The
+  model id is extracted from the URL path.
+- **Google Vertex AI / Gemini API** —
+  `*-aiplatform.googleapis.com/*/models/*:generateContent` (or
+  `:streamGenerateContent` / `:predict`) and
+  `generativelanguage.googleapis.com/*/models/*:generateContent`
+  (Gemini AI Studio). Reads `usageMetadata.promptTokenCount` +
+  `candidatesTokenCount`.
+
+### API change (internal)
+
+`llmparse.ParseResponse` signature is now
+`ParseResponse(url, body, headers http.Header)` to support
+providers that report usage in headers. The proxy passes
+`resp.Header` through automatically. Callers outside the engine
+that wired against the v0.3.0 signature need to update.
+
+### Tests
+
+`internal/llmparse/parse_test.go` gains 4 new tests covering each
+new provider's response shape. Total package: 11 tests.
+`internal/proxy/proxy_test.go` unchanged — the new headers
+parameter is passed transparently.
+
+### Coverage matrix after this release
+
+| Provider | URL recognition | Usage parsing | Streaming |
+|---|---|---|---|
+| OpenAI Chat Completions | ✅ | ✅ | ⚠️ (body buffered; OK for non-stream) |
+| OpenAI Responses API | ✅ | ✅ | ⚠️ |
+| Anthropic Messages | ✅ | ✅ | ⚠️ |
+| AWS Bedrock Invoke / Converse | ✅ | ✅ (header-based) | ⚠️ |
+| Google Vertex / Gemini | ✅ | ✅ | ⚠️ |
+| Ollama generate / chat | ✅ | ✅ | ⚠️ |
+
+(Streaming responses still pass through unparsed — usage frames
+are split across SSE chunks; v0.3.x fast-follow.)
+
+### Same v0.3.0 HTTPS caveat applies
+
+Plain-HTTP forward path only. Direct HTTPS traffic to public
+provider endpoints stays opaque via CONNECT tunnels; that needs
+the v0.4.x MITM mode.
+
 ## [0.3.0] — 2026-05-16
 
 ### Added — LLM response token parsing + network-layer token budget
