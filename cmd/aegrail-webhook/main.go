@@ -18,6 +18,19 @@
 //	AEGRAIL_ENGINE_DEFAULT_IDENTITY  default aegrail.io/identity
 //	                                  label value (default "auto-injected/v1")
 //	AEGRAIL_ENGINE_LISTEN_PORT (optional, default 8080)
+//	AEGRAIL_WEBHOOK_MITM_CA_SECRET_NAME (optional) Secret name in target
+//	                                  namespace containing the MITM CA
+//	                                  cert+key. Enables HTTPS termination
+//	                                  in the injected sidecar.
+//	AEGRAIL_WEBHOOK_MITM_HOSTS  (optional) comma-separated host patterns
+//	                              for which the sidecar performs MITM
+//	AEGRAIL_WEBHOOK_MITM_CA_CERT_KEY  (optional) key in Secret for CA cert
+//	                                    PEM (default "tls.crt")
+//	AEGRAIL_WEBHOOK_MITM_CA_KEY_KEY   (optional) key in Secret for CA key
+//	                                    PEM (default "tls.key")
+//	AEGRAIL_WEBHOOK_MITM_CA_MOUNT_DIR  (optional) in-container dir to
+//	                                     mount the CA at
+//	                                     (default "/etc/aegrail/mitm-ca")
 //
 // Health endpoints (HTTP, no TLS — for K8s liveness/readiness):
 //
@@ -47,7 +60,7 @@ import (
 	"github.com/aegrail/aegrail-engine/internal/webhook"
 )
 
-var Version = "0.4.2"
+var Version = "0.4.3"
 
 type admissionReview struct {
 	APIVersion string         `json:"apiVersion"`
@@ -89,14 +102,19 @@ func run() error {
 		MaxRequests: os.Getenv("AEGRAIL_ENGINE_MAX_REQUESTS"),
 		RateLimit:   os.Getenv("AEGRAIL_ENGINE_RATE_LIMIT"),
 		MaxTokens:   os.Getenv("AEGRAIL_ENGINE_MAX_TOKENS"),
-		// MITM trust injection (v0.4.1+). When set, the mutator
-		// adds a volume mount + SSL_CERT_FILE / REQUESTS_CA_BUNDLE /
-		// NODE_EXTRA_CA_CERTS env vars to every user container so
-		// the engine's MITM-presented leaf cert is accepted.
+		// MITM injection (v0.4.1+ / fixed v0.4.3). When the Secret
+		// is set, the mutator:
+		//   - mounts the Secret on agent containers AND the engine sidecar
+		//   - sets SSL_CERT_FILE/REQUESTS_CA_BUNDLE/NODE_EXTRA_CA_CERTS
+		//     on agent containers
+		//   - sets AEGRAIL_ENGINE_MITM_HOSTS/_CA_CERT_FILE/_CA_KEY_FILE
+		//     on the engine sidecar so it actually terminates TLS
 		// The Secret must already exist in each labeled namespace.
 		MITMCASecretName: os.Getenv("AEGRAIL_WEBHOOK_MITM_CA_SECRET_NAME"),
 		MITMCACertKey:    envDefault("AEGRAIL_WEBHOOK_MITM_CA_CERT_KEY", "tls.crt"),
-		MITMCAMountPath:  envDefault("AEGRAIL_WEBHOOK_MITM_CA_MOUNT_PATH", "/etc/aegrail/mitm-ca/ca.crt"),
+		MITMCAKeyKey:     envDefault("AEGRAIL_WEBHOOK_MITM_CA_KEY_KEY", "tls.key"),
+		MITMCAMountDir:   envDefault("AEGRAIL_WEBHOOK_MITM_CA_MOUNT_DIR", "/etc/aegrail/mitm-ca"),
+		MITMHosts:        os.Getenv("AEGRAIL_WEBHOOK_MITM_HOSTS"),
 		DefaultIdentity:  envDefault("AEGRAIL_ENGINE_DEFAULT_IDENTITY", "auto-injected/v1"),
 		EngineListenPort: envInt("AEGRAIL_ENGINE_LISTEN_PORT", 8080),
 	}

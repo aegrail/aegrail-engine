@@ -184,31 +184,56 @@ func TestBuildPatch_MITMCAInjectsVolumeAndTrustEnv(t *testing.T) {
 	t.Parallel()
 	cfg := defaultConfig()
 	cfg.MITMCASecretName = "aegrail-mitm-ca"
+	cfg.MITMHosts = "api.openai.com,api.anthropic.com"
 	patch, err := BuildPatch(samplePod("agent"), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	patchStr := string(patch)
 
-	// All three standard HTTPS trust env vars should be set
 	for _, env := range []string{"SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS"} {
 		if !strings.Contains(patchStr, `"name":"`+env+`"`) {
 			t.Errorf("patch missing %s env when MITM CA is configured", env)
 		}
 	}
-	// Volume mount on the user container
+	if !strings.Contains(patchStr, `"value":"/etc/aegrail/mitm-ca/tls.crt"`) {
+		t.Errorf("patch should set agent trust env vars to /etc/aegrail/mitm-ca/tls.crt; got %s", patchStr)
+	}
 	if !strings.Contains(patchStr, `"name":"aegrail-mitm-ca"`) {
 		t.Errorf("patch missing aegrail-mitm-ca volume reference")
 	}
 	if !strings.Contains(patchStr, `"mountPath":"/etc/aegrail/mitm-ca"`) {
 		t.Errorf("patch missing /etc/aegrail/mitm-ca mount path")
 	}
-	// Pod-level volume declaration
 	if !strings.Contains(patchStr, `"path":"/spec/volumes/-"`) {
 		t.Errorf("patch missing /spec/volumes/- volume declaration")
 	}
 	if !strings.Contains(patchStr, `"secretName":"aegrail-mitm-ca"`) {
 		t.Errorf("patch missing Secret reference")
+	}
+
+	// v0.4.3 fix: the injected engine sidecar MUST itself MITM,
+	// otherwise the agent's trust-store (which now only contains
+	// our CA) breaks every direct HTTPS call.
+	for _, env := range []string{
+		"AEGRAIL_ENGINE_MITM_HOSTS",
+		"AEGRAIL_ENGINE_MITM_CA_CERT_FILE",
+		"AEGRAIL_ENGINE_MITM_CA_KEY_FILE",
+	} {
+		if !strings.Contains(patchStr, `"name":"`+env+`"`) {
+			t.Errorf("engine sidecar missing %s env — sidecar will tunnel opaquely and break TLS trust", env)
+		}
+	}
+	if !strings.Contains(patchStr, `"value":"api.openai.com,api.anthropic.com"`) {
+		t.Errorf("AEGRAIL_ENGINE_MITM_HOSTS should pass through cfg.MITMHosts; got %s", patchStr)
+	}
+	if !strings.Contains(patchStr, `"value":"/etc/aegrail/mitm-ca/tls.key"`) {
+		t.Errorf("AEGRAIL_ENGINE_MITM_CA_KEY_FILE should point at /etc/aegrail/mitm-ca/tls.key")
+	}
+
+	// Both Secret items projected (cert + key)
+	if !strings.Contains(patchStr, `"key":"tls.crt"`) || !strings.Contains(patchStr, `"key":"tls.key"`) {
+		t.Errorf("Secret volume should project both tls.crt AND tls.key items; got %s", patchStr)
 	}
 }
 

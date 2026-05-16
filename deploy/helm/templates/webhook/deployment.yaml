@@ -59,6 +59,22 @@ spec:
             {{- if and .Values.mitm .Values.mitm.caSecretName }}
             - name: AEGRAIL_WEBHOOK_MITM_CA_SECRET_NAME
               value: {{ .Values.mitm.caSecretName | quote }}
+            {{- if .Values.mitm.caCertKey }}
+            - name: AEGRAIL_WEBHOOK_MITM_CA_CERT_KEY
+              value: {{ .Values.mitm.caCertKey | quote }}
+            {{- end }}
+            {{- if .Values.mitm.caKeyKey }}
+            - name: AEGRAIL_WEBHOOK_MITM_CA_KEY_KEY
+              value: {{ .Values.mitm.caKeyKey | quote }}
+            {{- end }}
+            {{- if .Values.mitm.caMountDir }}
+            - name: AEGRAIL_WEBHOOK_MITM_CA_MOUNT_DIR
+              value: {{ .Values.mitm.caMountDir | quote }}
+            {{- end }}
+            {{- if .Values.mitm.hosts }}
+            - name: AEGRAIL_WEBHOOK_MITM_HOSTS
+              value: {{ .Values.mitm.hosts | quote }}
+            {{- end }}
             {{- end }}
             - name: AEGRAIL_ENGINE_DEFAULT_IDENTITY
               value: {{ .Values.webhook.defaultIdentity | quote }}
