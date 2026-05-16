@@ -2,6 +2,33 @@ apiVersion: v1
 entries:
   aegrail-engine:
   - apiVersion: v2
+    appVersion: 0.4.0
+    created: "2026-05-16T08:59:32.846195113Z"
+    description: 'Sidecar enforcement engine for the aegrail runtime contract for
+      AI agents on Kubernetes. Deploys as a per-pod sidecar that intercepts outbound
+      HTTP traffic from the agent container, applies an allowlist policy, and writes
+      a tamper-evident audit log. '
+    digest: 7f7d66863abd651c1b9f6566b161aa884e4ecf671a6ff180f351a775a1909fda
+    home: https://github.com/arpitcoder/aegrail-engine
+    keywords:
+    - ai-agents
+    - agent-security
+    - llm
+    - egress
+    - sidecar
+    - audit
+    - compliance
+    maintainers:
+    - name: Arpit Nigam
+      url: https://github.com/arpitcoder
+    name: aegrail-engine
+    sources:
+    - https://github.com/arpitcoder/aegrail-engine
+    type: application
+    urls:
+    - https://github.com/arpitcoder/aegrail-engine/releases/download/aegrail-engine-0.4.0/aegrail-engine-0.4.0.tgz
+    version: 0.4.0
+  - apiVersion: v2
     appVersion: 0.3.1
     created: "2026-05-16T08:51:09.815089871Z"
     description: 'Sidecar enforcement engine for the aegrail runtime contract for
@@ -163,4 +190,4 @@ entries:
     urls:
     - https://github.com/arpitcoder/aegrail-engine/releases/download/aegrail-engine-0.1.0-rc/aegrail-engine-0.1.0-rc.tgz
     version: 0.1.0-rc
-generated: "2026-05-16T08:51:09.815118033Z"
+generated: "2026-05-16T08:59:32.846234688Z"
