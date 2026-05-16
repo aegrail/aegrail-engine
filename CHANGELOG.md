@@ -6,6 +6,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-05-16
+
+### Fixed — webhook+MITM was half-wired; injected sidecars tunneled opaquely
+
+v0.4.1 shipped the webhook side of the MITM story: the admission
+controller mounted the CA Secret on agent containers and set the
+three standard HTTPS trust env vars (`SSL_CERT_FILE`,
+`REQUESTS_CA_BUNDLE`, `NODE_EXTRA_CA_CERTS`). What it forgot:
+**the engine sidecar itself never got the MITM configuration.**
+
+The injected sidecar therefore tunneled all CONNECT traffic
+opaquely, even when `mitm.hosts` and `mitm.caSecretName` were set
+on the Helm install. Combined with the agent's now-replaced trust
+store, this meant every HTTPS call from an injected pod failed
+verification: the agent's trust store contained only the operator's
+CA, but the sidecar passed through the *real* upstream's cert
+unchanged.
+
+The standalone engine Deployment (the chart's primary workload)
+worked correctly — only the auto-injection path was broken.
+
+### What the fix changes
+
+1. `Config` struct (`internal/webhook/mutator.go`) gains
+   `MITMHosts`, `MITMCAKeyKey`, `MITMCAMountDir` (renamed from the
+   path-style `MITMCAMountPath`).
+2. `buildEngineContainer` now injects on the sidecar:
+   - `AEGRAIL_ENGINE_MITM_HOSTS`
+   - `AEGRAIL_ENGINE_MITM_CA_CERT_FILE` (→ `/etc/aegrail/mitm-ca/tls.crt`)
+   - `AEGRAIL_ENGINE_MITM_CA_KEY_FILE` (→ `/etc/aegrail/mitm-ca/tls.key`)
+   - A `volumeMount` for the CA Secret (the sidecar needs the key
+     to mint leaf certs; agents only need the cert).
+3. The Secret projection now exposes both `tls.crt` and `tls.key`
+   (instead of just aliasing `tls.crt` to `ca.crt`). Agent
+   `SSL_CERT_FILE` accordingly points at
+   `/etc/aegrail/mitm-ca/tls.crt`.
+4. The webhook deployment reads new env vars:
+   `AEGRAIL_WEBHOOK_MITM_HOSTS`, `AEGRAIL_WEBHOOK_MITM_CA_KEY_KEY`,
+   `AEGRAIL_WEBHOOK_MITM_CA_MOUNT_DIR`. Helm chart plumbs them
+   automatically from `mitm.hosts` / `mitm.caSecretName`.
+
+### Also fixed — ECDSA CAs now load
+
+The kind end-to-end test for this fix discovered a second defect:
+`mitm.LoadAuthority` rejected any non-RSA CA with `"CA key is not
+RSA"`. openssl, cert-manager, and most modern PKI tooling default
+to ECDSA — so the v0.4.1 documented setup ("create a TLS Secret
+from your existing CA") quietly failed for anyone whose CA wasn't
+RSA. `parseAnyPrivateKey` now accepts PKCS#1 (RSA), PKCS#8 (any
+algorithm), and SEC1 (ECDSA) PEM blocks. Authority's `caKey` is
+widened from `*rsa.PrivateKey` to `crypto.Signer`. Leaf keys remain
+RSA for max client compatibility.
+
+### Tests
+
+- `internal/webhook/mutator_test.go`: extended
+  `TestBuildPatch_MITMCAInjectsVolumeAndTrustEnv` to assert the
+  three new sidecar env vars + both Secret items + the corrected
+  trust-store path.
+- `internal/mitm/cert_test.go`: new
+  `TestLoadAuthority_AcceptsRSAAndECDSA` covers PKCS#1, PKCS#8 RSA,
+  and PKCS#8 ECDSA P-256.
+- `tests/kind/run-mitm-webhook.sh` (new) — 11 scenarios. Generates
+  an ECDSA CA, creates the Secret in both namespaces, installs Helm
+  with `webhook.enabled=true` + MITM, asserts every layer of the
+  fix, and then actually `curl`s `https://example.com/` through the
+  injected sidecar and checks the audit event has `mitm:true`.
+
+### Migration
+
+None for users. Operators who built tooling against the old
+sidecar-without-MITM-env behaviour didn't have working MITM
+anyway — the change makes the broken case work, not the working
+case differently.
+
 ## [0.4.2] — 2026-05-16
 
 ### Changed — repository moved to `aegrail` GitHub organisation
