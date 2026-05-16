@@ -12,8 +12,17 @@ import (
 	"time"
 
 	"github.com/arpitcoder/aegrail-engine/internal/audit"
+	"github.com/arpitcoder/aegrail-engine/internal/limits"
 	"github.com/arpitcoder/aegrail-engine/internal/policy"
 )
+
+func limitsCounter(max int64) *limits.RequestCounter {
+	return limits.NewRequestCounter(max)
+}
+
+func limitsRate(perSec, burst float64) *limits.RateLimiter {
+	return limits.NewRateLimiter(perSec, burst)
+}
 
 // memorySink is an audit.Sink that captures emitted events in
 // memory for assertions. It still does the prev_hash / event_hash
@@ -325,6 +334,104 @@ func TestProxy_EngineShutdownEmitsEvent(t *testing.T) {
 	}
 	if shutdowns[0].Payload["reason"] != "sigterm" {
 		t.Errorf("payload.reason: got %v, want sigterm", shutdowns[0].Payload["reason"])
+	}
+}
+
+// -- Network-layer budgets (v0.1.2) ----------------------------
+
+func TestProxy_RequestCounter_ExhaustsAfterMax(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+	upstreamHost := mustHost(t, upstream.URL)
+
+	proxyHandler, sink := mustNewProxy(t, []string{upstreamHost})
+	proxyHandler.Counter = limitsCounter(2)
+	server := httptest.NewServer(proxyHandler)
+	defer server.Close()
+	client := proxiedClient(server.URL)
+
+	// First two calls succeed
+	for i := 1; i <= 2; i++ {
+		resp, err := client.Get(upstream.URL + "/")
+		if err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("call %d: status %d, want 200", i, resp.StatusCode)
+		}
+	}
+
+	// Third call denied with 429
+	resp, err := client.Get(upstream.URL + "/")
+	if err != nil {
+		t.Fatalf("third call: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("third call: status %d, want 429", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Aegrail-Reason"); got != "request_count_exceeded" {
+		t.Errorf("X-Aegrail-Reason: got %q, want request_count_exceeded", got)
+	}
+
+	denied := sink.eventsOfType(audit.TypeEgressDenied)
+	if len(denied) != 1 {
+		t.Fatalf("egress_denied events: got %d, want 1", len(denied))
+	}
+	if denied[0].Payload["reason"] != "request_count_exceeded" {
+		t.Errorf("payload.reason: got %v, want request_count_exceeded", denied[0].Payload["reason"])
+	}
+}
+
+func TestProxy_RateLimiter_DeniesWhenBucketEmpty(t *testing.T) {
+	t.Parallel()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+	upstreamHost := mustHost(t, upstream.URL)
+
+	proxyHandler, sink := mustNewProxy(t, []string{upstreamHost})
+	// Burst of 1, refill rate so slow the second call is denied
+	proxyHandler.Limiter = limitsRate(0.01, 1.0)
+	server := httptest.NewServer(proxyHandler)
+	defer server.Close()
+	client := proxiedClient(server.URL)
+
+	resp, err := client.Get(upstream.URL + "/")
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("first call: status %d, want 200", resp.StatusCode)
+	}
+
+	resp, err = client.Get(upstream.URL + "/")
+	if err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("second call: status %d, want 429 (rate)", resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Aegrail-Reason"); got != "rate_limited" {
+		t.Errorf("X-Aegrail-Reason: got %q, want rate_limited", got)
+	}
+
+	denied := sink.eventsOfType(audit.TypeEgressDenied)
+	if len(denied) != 1 {
+		t.Fatalf("egress_denied events: got %d, want 1", len(denied))
+	}
+	if denied[0].Payload["reason"] != "rate_limited" {
+		t.Errorf("payload.reason: got %v, want rate_limited", denied[0].Payload["reason"])
 	}
 }
 

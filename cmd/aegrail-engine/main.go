@@ -18,6 +18,11 @@
 //	                                   (mutually exclusive with stdout)
 //	AEGRAIL_ENGINE_AUDIT_STDOUT        "1" -> stdout sink (default)
 //	AEGRAIL_ENGINE_LISTEN              listen addr (default :8080)
+//	AEGRAIL_ENGINE_MAX_REQUESTS        hard cap on total requests
+//	                                   served over the engine's
+//	                                   lifetime (0 = unlimited)
+//	AEGRAIL_ENGINE_RATE_LIMIT          token-bucket rate (e.g.
+//	                                   "10/sec", "100/min")
 //
 // Flags can override any env var; the env-driven path is the
 // production path.
@@ -33,11 +38,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/arpitcoder/aegrail-engine/internal/audit"
+	"github.com/arpitcoder/aegrail-engine/internal/limits"
 	"github.com/arpitcoder/aegrail-engine/internal/policy"
 	"github.com/arpitcoder/aegrail-engine/internal/proxy"
 )
@@ -46,7 +53,7 @@ import (
 // link time via `-ldflags "-X main.Version=$VERSION"` based on the
 // git tag, so the value here is what local `go run` / `go build`
 // reports — keep it in sync with the most recent tag for hygiene.
-var Version = "0.1.1"
+var Version = "0.1.2"
 
 func main() {
 	if err := run(); err != nil {
@@ -61,6 +68,8 @@ func run() error {
 		allowlistFlag   string
 		auditFile       string
 		auditStdout     bool
+		maxRequestsRaw  string
+		rateLimitRaw    string
 		shutdownTimeout time.Duration
 		showVersion     bool
 	)
@@ -76,6 +85,12 @@ func run() error {
 	flag.BoolVar(&auditStdout, "audit-stdout",
 		os.Getenv("AEGRAIL_ENGINE_AUDIT_STDOUT") == "1",
 		"emit audit events to stdout (default when no audit-file is given)")
+	flag.StringVar(&maxRequestsRaw, "max-requests",
+		os.Getenv("AEGRAIL_ENGINE_MAX_REQUESTS"),
+		"hard cap on total requests served over engine lifetime (0 = unlimited)")
+	flag.StringVar(&rateLimitRaw, "rate-limit",
+		os.Getenv("AEGRAIL_ENGINE_RATE_LIMIT"),
+		"token-bucket rate (e.g. '10/sec', '100/min')")
 	flag.DurationVar(&shutdownTimeout, "shutdown-timeout", 10*time.Second,
 		"max time to wait for in-flight requests on SIGTERM")
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")
@@ -106,10 +121,28 @@ func run() error {
 		return fmt.Errorf("session: %w", err)
 	}
 
+	var counter *limits.RequestCounter
+	if strings.TrimSpace(maxRequestsRaw) != "" {
+		n, err := strconv.ParseInt(strings.TrimSpace(maxRequestsRaw), 10, 64)
+		if err != nil {
+			return fmt.Errorf("max-requests: %w", err)
+		}
+		if n > 0 {
+			counter = limits.NewRequestCounter(n)
+		}
+	}
+
+	limiter, err := limits.ParseRateSpec(rateLimitRaw)
+	if err != nil {
+		return fmt.Errorf("rate-limit: %w", err)
+	}
+
 	prox := &proxy.Proxy{
 		Policy:  pol,
 		Sink:    sink,
 		Session: session,
+		Counter: counter,
+		Limiter: limiter,
 	}
 	prox.EmitEngineStart(Version)
 

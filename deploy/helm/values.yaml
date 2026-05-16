@@ -57,6 +57,21 @@ policy:
   #   - api.anthropic.com
   #   - "*.openai.com"
 
+# Network-layer request budgets (v0.1.2+). These cap the engine's
+# behavior without requiring body inspection — useful when the agent
+# itself never imported the aegrail SDK and the platform team wants
+# hard cost guardrails anyway.
+limits:
+  # Hard cap on total requests served over the engine's process
+  # lifetime. 0 = unlimited. Denials emit egress_denied with
+  # reason=request_count_exceeded and HTTP 429.
+  maxRequests: 0
+  # Token-bucket rate limit. Empty = unlimited. Format: "<n>/<unit>"
+  # where unit is sec|min|hour. Burst equals n. Denials emit
+  # egress_denied with reason=rate_limited and HTTP 429.
+  # Example: "10/sec", "1000/min"
+  rate: ""
+
 # Audit log mode. v0.1.0 will write JSONL with a SHA-256 chain link
 # per event, compatible with the aegrail Python library's format.
 audit:

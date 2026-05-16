@@ -6,6 +6,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-05-16
+
+### Added — network-layer request budgets
+
+Two new primitives let the engine enforce cost-bounded behavior
+**without inspecting response bodies** — the case where an agent
+never imported the aegrail SDK but the platform team still wants
+a hard cap.
+
+- **`AEGRAIL_ENGINE_MAX_REQUESTS`** — total requests served over
+  the engine's process lifetime. Denials return HTTP 429 with
+  `X-Aegrail-Decision: denied`, `X-Aegrail-Reason: request_count_exceeded`,
+  and an `egress_denied` audit event whose payload includes
+  `reason`, `total`, `max`, `host`, and `method`. 0 (default) means
+  unlimited.
+- **`AEGRAIL_ENGINE_RATE_LIMIT`** — token-bucket rate limit, format
+  `<n>/<unit>` where unit is `sec`, `min`, or `hour`. Burst equals n.
+  Denials return HTTP 429 with `X-Aegrail-Reason: rate_limited`.
+  Empty (default) means unlimited.
+
+Both checks fire **before** the per-host allowlist policy so a
+runaway agent burns the budget once, not once per allowlisted
+destination. Both are no-ops when their value is empty/zero, so
+the change is fully backward compatible.
+
+### New internal package
+
+`internal/limits` — `RequestCounter` (atomic counter with cap) and
+`RateLimiter` (single-bucket token bucket, no external deps).
+`ParseRateSpec` parses the rate-string format. 10 new unit tests.
+
+### Proxy + tests
+
+`Proxy` struct gains `Counter` and `Limiter` fields. The proxy's
+pre-flight in `ServeHTTP` checks both before dispatching to plain-
+HTTP or CONNECT paths. 2 new proxy tests exercise the request-count
+and rate-limit denial paths end-to-end via httptest.
+
+### Helm chart
+
+New `values.yaml` block:
+
+```yaml
+limits:
+  maxRequests: 0    # 0 = unlimited
+  rate: ""          # e.g. "10/sec", "1000/min"
+```
+
+ConfigMap renders the corresponding env vars only when set. Default
+behavior unchanged for existing deployments.
+
+### Why this is its own release
+
+The webhook in v0.2.0 will let platform teams enable engine-side
+enforcement on a labeled namespace without dev-team cooperation.
+Shipping the network-layer budgets first means the auto-injected
+engine arrives already capable of enforcing a hard cap — instead
+of being an audit-only proxy until later.
+
 ## [0.1.1] — 2026-05-16
 
 ### Added — pod-label-driven agent identity (K8s downward API)

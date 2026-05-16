@@ -17,3 +17,11 @@ data:
   AEGRAIL_ENGINE_AUDIT_FILE: {{ .Values.audit.filePath | quote }}
   {{- end }}
   AEGRAIL_ENGINE_LISTEN: {{ printf ":%d" (int .Values.proxy.listenPort) | quote }}
+  {{- if .Values.limits }}
+  {{- if .Values.limits.maxRequests }}
+  AEGRAIL_ENGINE_MAX_REQUESTS: {{ .Values.limits.maxRequests | quote }}
+  {{- end }}
+  {{- if .Values.limits.rate }}
+  AEGRAIL_ENGINE_RATE_LIMIT: {{ .Values.limits.rate | quote }}
+  {{- end }}
+  {{- end }}

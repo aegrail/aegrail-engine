@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/arpitcoder/aegrail-engine/internal/audit"
+	"github.com/arpitcoder/aegrail-engine/internal/limits"
 	"github.com/arpitcoder/aegrail-engine/internal/policy"
 )
 
@@ -42,6 +43,16 @@ type Proxy struct {
 	Sink    audit.Sink
 	Session *Session
 
+	// Counter caps total requests served over the engine's lifetime.
+	// Nil = unlimited. When the cap is exceeded, the call is denied
+	// with reason="request_count_exceeded" and HTTP 429.
+	Counter *limits.RequestCounter
+
+	// Limiter caps requests per unit time (token bucket). Nil =
+	// unlimited. When no token is available, the call is denied
+	// with reason="rate_limited" and HTTP 429.
+	Limiter *limits.RateLimiter
+
 	// DialTimeout caps how long the proxy waits when establishing a
 	// CONNECT tunnel to upstream. Zero defaults to 10s.
 	DialTimeout time.Duration
@@ -51,17 +62,76 @@ type Proxy struct {
 	ForwardTimeout time.Duration
 }
 
-// ServeHTTP dispatches to the HTTPS CONNECT or plain HTTP path.
+// ServeHTTP dispatches to the HTTPS CONNECT or plain HTTP path,
+// after applying the network-layer request budgets (if any) that
+// don't require body inspection.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if p.Policy == nil || p.Sink == nil || p.Session == nil {
 		http.Error(w, "aegrail-engine: proxy not configured", http.StatusInternalServerError)
 		return
 	}
+
+	// Pre-flight: request-count budget. Fires before any per-host
+	// policy decision so a runaway agent burns budget once, not once
+	// per allowlisted destination.
+	if p.Counter != nil {
+		if ok, total := p.Counter.Allow(); !ok {
+			p.denyRateOrCount(w, r, "request_count_exceeded", map[string]any{
+				"total":  total,
+				"max":    p.Counter.Max(),
+				"host":   hostFromRequest(r),
+				"method": r.Method,
+			})
+			return
+		}
+	}
+
+	// Pre-flight: token-bucket rate limiter.
+	if p.Limiter != nil && !p.Limiter.Allow() {
+		p.denyRateOrCount(w, r, "rate_limited", map[string]any{
+			"rate_per_sec": p.Limiter.Rate(),
+			"burst":        p.Limiter.Burst(),
+			"host":         hostFromRequest(r),
+			"method":       r.Method,
+		})
+		return
+	}
+
 	if r.Method == http.MethodConnect {
 		p.handleConnect(w, r)
 		return
 	}
 	p.handleHTTP(w, r)
+}
+
+// denyRateOrCount writes a 429 to the client and emits an
+// egress_denied audit event with the given reason and payload.
+func (p *Proxy) denyRateOrCount(
+	w http.ResponseWriter,
+	_ *http.Request,
+	reason string,
+	payload map[string]any,
+) {
+	payload["reason"] = reason
+	p.emit(audit.TypeEgressDenied, payload)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Aegrail-Decision", "denied")
+	w.Header().Set("X-Aegrail-Reason", reason)
+	w.WriteHeader(http.StatusTooManyRequests)
+	_, _ = w.Write([]byte("aegrail-engine: " + reason + "\n"))
+}
+
+// hostFromRequest extracts the destination host for use in audit
+// payloads — works for both plain-HTTP proxy requests (host in URL)
+// and CONNECT (host in r.Host).
+func hostFromRequest(r *http.Request) string {
+	if r.URL != nil && r.URL.Host != "" {
+		return hostWithoutPort(r.URL.Host)
+	}
+	if r.Host != "" {
+		return hostWithoutPort(r.Host)
+	}
+	return ""
 }
 
 // emit writes one audit event through the sink, logging — never

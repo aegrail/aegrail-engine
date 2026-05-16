@@ -6,8 +6,8 @@ description: |
   outbound HTTP traffic from the agent container, applies an allowlist
   policy, and writes a tamper-evident audit log.
 type: application
-version: 0.1.1
-appVersion: "0.1.1"
+version: 0.1.2
+appVersion: "0.1.2"
 keywords:
   - ai-agents
   - agent-security
