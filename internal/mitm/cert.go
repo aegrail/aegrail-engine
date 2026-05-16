@@ -19,6 +19,9 @@
 package mitm
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -35,9 +38,14 @@ import (
 
 // Authority holds the engine's CA cert + private key and the leaf
 // cert cache. Construct with NewAuthority or LoadAuthority.
+//
+// caKey is a crypto.Signer so both RSA and ECDSA CAs work — ECDSA
+// is the modern default for new CAs and openssl/cert-manager
+// generate ECDSA by default. Rejecting non-RSA keys would force
+// operators to regenerate their CA infrastructure to use aegrail.
 type Authority struct {
 	caCert  *x509.Certificate
-	caKey   *rsa.PrivateKey
+	caKey   crypto.Signer
 	caPEM   []byte
 	leafTTL time.Duration
 
@@ -117,18 +125,9 @@ func LoadAuthority(certPath, keyPath string) (*Authority, error) {
 	if keyBlock == nil {
 		return nil, fmt.Errorf("mitm: %q is not PEM-encoded", keyPath)
 	}
-	caKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+	caKey, err := parseAnyPrivateKey(keyBlock.Bytes)
 	if err != nil {
-		// PKCS#8 fallback
-		anyKey, err2 := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
-		if err2 != nil {
-			return nil, fmt.Errorf("mitm: parse CA key: %w (PKCS#8 fallback also failed)", err)
-		}
-		rsaKey, ok := anyKey.(*rsa.PrivateKey)
-		if !ok {
-			return nil, fmt.Errorf("mitm: CA key is not RSA")
-		}
-		caKey = rsaKey
+		return nil, fmt.Errorf("mitm: parse CA key %q: %w", keyPath, err)
 	}
 	return &Authority{
 		caCert:    caCert,
@@ -137,6 +136,32 @@ func LoadAuthority(certPath, keyPath string) (*Authority, error) {
 		leafTTL:   24 * time.Hour,
 		leafCache: make(map[string]*cachedLeaf),
 	}, nil
+}
+
+// parseAnyPrivateKey accepts PKCS#1 (RSA-only legacy), PKCS#8 (any
+// algorithm), and SEC1 (ECDSA-only legacy) PEM blocks. Returns the
+// key as a crypto.Signer so RSA, ECDSA, and Ed25519 all work as CA
+// signing keys.
+func parseAnyPrivateKey(der []byte) (crypto.Signer, error) {
+	if k, err := x509.ParsePKCS8PrivateKey(der); err == nil {
+		signer, ok := k.(crypto.Signer)
+		if !ok {
+			return nil, fmt.Errorf("PKCS#8 key type %T is not a signer", k)
+		}
+		switch signer.(type) {
+		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
+			return signer, nil
+		default:
+			return nil, fmt.Errorf("unsupported key type %T (want RSA, ECDSA, or Ed25519)", k)
+		}
+	}
+	if k, err := x509.ParsePKCS1PrivateKey(der); err == nil {
+		return k, nil
+	}
+	if k, err := x509.ParseECPrivateKey(der); err == nil {
+		return k, nil
+	}
+	return nil, fmt.Errorf("not a PKCS#1, PKCS#8, or SEC1 PEM block")
 }
 
 // CAPEM returns the PEM-encoded CA certificate (for distribution
@@ -168,6 +193,9 @@ func (a *Authority) LeafFor(host string) (*tls.Certificate, error) {
 }
 
 func (a *Authority) mintLeaf(host string) (*tls.Certificate, error) {
+	// Leaf keys stay RSA regardless of CA key algorithm — RSA leaves
+	// are the most broadly compatible and the perf cost on the hot
+	// path is dominated by the TLS handshake, not the keygen.
 	leafKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, fmt.Errorf("mitm: generate leaf key: %w", err)
