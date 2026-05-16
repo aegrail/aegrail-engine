@@ -110,6 +110,18 @@ grep -q "configMapRef:" /tmp/aegrail-helm-rendered.yaml \
 pass "rendered manifests have the expected env-var ConfigMap shape"
 rm -f /tmp/aegrail-helm-rendered.yaml
 
+# v0.1.1 check: agentIdentityFromLabel renders the downward-API fieldRef
+helm template "${RELEASE_NAME}" "${CHART_PATH}" \
+  --set "policy.allowlist[0]=api.openai.com" \
+  --set "agentIdentityFromLabel=aegrail.io/identity" \
+  > /tmp/aegrail-helm-label.yaml
+grep -q "metadata.labels\['aegrail.io/identity'\]" /tmp/aegrail-helm-label.yaml \
+  || { cat /tmp/aegrail-helm-label.yaml; fail "agentIdentityFromLabel did not render fieldRef"; }
+grep -q "AEGRAIL_ENGINE_AGENT_IDENTITY" /tmp/aegrail-helm-label.yaml \
+  || fail "AEGRAIL_ENGINE_AGENT_IDENTITY env not present when label binding is set"
+pass "agentIdentityFromLabel renders downward-API fieldRef (v0.1.1)"
+rm -f /tmp/aegrail-helm-label.yaml
+
 # ----------------------------------------------------------------
 echo ""
 echo "=== Scenario 4: build image + create cluster + load image ==="

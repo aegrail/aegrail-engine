@@ -6,6 +6,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-05-16
+
+### Added — pod-label-driven agent identity (K8s downward API)
+
+The engine's `agent_identity` can now be bound to a pod label via
+the K8s downward API. Set `agentIdentityFromLabel` in the Helm
+values, label your pod, and every audit event the engine emits
+carries the label's value as `agent_identity`.
+
+```yaml
+# values.yaml
+agentIdentityFromLabel: "aegrail.io/identity"
+```
+
+```yaml
+# the pod manifest (or, soon, the auto-injection webhook in v0.2.0)
+metadata:
+  labels:
+    aegrail.io/identity: "support-bot/v1"
+```
+
+The Helm chart renders a direct `env` entry that reads
+`metadata.labels['<key>']` via `valueFrom.fieldRef`. K8s applies
+direct `env` entries after `envFrom`, so the label wins over the
+static ConfigMap value. Existing deployments without
+`agentIdentityFromLabel` set are unaffected — the static
+`agentIdentity` continues to flow through the ConfigMap as before.
+
+This is the foundation for the v0.2.0 mutating admission webhook,
+where the webhook will stamp `aegrail.io/identity` on agent pods
+when it auto-injects the engine sidecar. The agent author writes
+zero code; the operator labels a namespace; every audit event is
+correctly identified.
+
+### Why this is its own release
+
+Three reasons:
+
+1. The webhook in v0.2.0 depends on this — best to ship and
+   exercise the label path on its own first.
+2. Operators running the engine as a sidecar today can adopt the
+   pattern manually before the webhook ships.
+3. The change is chart-only (engine binary is unchanged in
+   behavior); shipping it standalone gives platform teams a clean
+   release boundary to track.
+
 ## [0.1.0-rc] — 2026-05-15
 
 First release candidate. Ships the egress proxy and the Helm chart

@@ -35,6 +35,18 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "aegrail-engine.fullname" . }}-policy
+          {{- if .Values.agentIdentityFromLabel }}
+          # Bind agent_identity to a pod label via the K8s downward
+          # API. A direct env entry overrides the ConfigMap value
+          # (envFrom is applied first, then env overlays), so the
+          # label wins. Foundation for the v0.2.0 mutating webhook
+          # that auto-injects this label on agent pods.
+          env:
+            - name: AEGRAIL_ENGINE_AGENT_IDENTITY
+              valueFrom:
+                fieldRef:
+                  fieldPath: "metadata.labels['{{ .Values.agentIdentityFromLabel }}']"
+          {{- end }}
           ports:
             - name: proxy
               containerPort: {{ .Values.proxy.listenPort }}

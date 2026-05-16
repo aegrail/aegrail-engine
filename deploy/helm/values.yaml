@@ -35,6 +35,18 @@ proxy:
 # string — your audit chain joins on it.
 agentIdentity: "egress-proxy/v1"
 
+# Optional: bind agent_identity to a pod label via the K8s downward
+# API. When set, the engine reads its identity from the named pod
+# label at startup and the static `agentIdentity` above is ignored.
+#
+# This is the foundation for the v0.2.0 sidecar auto-injection
+# webhook — the webhook will stamp the label on the agent's pod,
+# and every audit event the sidecar emits carries the agent's
+# identity without anyone editing the engine config.
+#
+# Example: agentIdentityFromLabel: "aegrail.io/identity"
+agentIdentityFromLabel: ""
+
 # Egress allowlist policy. Deny-by-default; only listed destinations
 # are permitted at v0.1.0+. Empty list = deny all.
 # Wildcards (e.g. *.openai.com) supported via fnmatch in the engine.
