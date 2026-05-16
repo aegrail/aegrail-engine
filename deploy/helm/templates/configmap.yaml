@@ -24,4 +24,7 @@ data:
   {{- if .Values.limits.rate }}
   AEGRAIL_ENGINE_RATE_LIMIT: {{ .Values.limits.rate | quote }}
   {{- end }}
+  {{- if .Values.limits.maxTokens }}
+  AEGRAIL_ENGINE_MAX_TOKENS: {{ .Values.limits.maxTokens | quote }}
+  {{- end }}
   {{- end }}

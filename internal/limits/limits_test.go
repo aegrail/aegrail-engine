@@ -82,6 +82,57 @@ func TestRateLimiter_RefillsOverTime(t *testing.T) {
 	}
 }
 
+// -- TokenBudget ------------------------------------------------
+
+func TestTokenBudget_Unlimited(t *testing.T) {
+	t.Parallel()
+	b := NewTokenBudget(0)
+	ok, total := b.Add(500)
+	if !ok || total != 500 {
+		t.Errorf("unlimited budget should always allow; got ok=%v total=%d", ok, total)
+	}
+	if b.OverBudget() {
+		t.Error("unlimited budget should never be over")
+	}
+}
+
+func TestTokenBudget_StaysWithinCap(t *testing.T) {
+	t.Parallel()
+	b := NewTokenBudget(1000)
+	ok, _ := b.Add(400)
+	if !ok {
+		t.Error("400 of 1000 should leave budget allowing next call")
+	}
+	if b.OverBudget() {
+		t.Error("400 of 1000 is not over budget")
+	}
+	if got := b.Used(); got != 400 {
+		t.Errorf("used: got %d, want 400", got)
+	}
+}
+
+func TestTokenBudget_ExhaustsAtCap(t *testing.T) {
+	t.Parallel()
+	b := NewTokenBudget(1000)
+	b.Add(600)
+	ok, total := b.Add(450) // total now 1050 > 1000
+	if ok {
+		t.Errorf("1050/1000 should deny next call (got ok=true total=%d)", total)
+	}
+	if !b.OverBudget() {
+		t.Error("after crossing the cap, OverBudget should report true")
+	}
+}
+
+func TestTokenBudget_OverBudgetTrueAtExactlyCap(t *testing.T) {
+	t.Parallel()
+	b := NewTokenBudget(100)
+	b.Add(100)
+	if !b.OverBudget() {
+		t.Error("at exactly cap, OverBudget should be true (no more headroom)")
+	}
+}
+
 // -- ParseRateSpec ----------------------------------------------
 
 func TestParseRateSpec(t *testing.T) {

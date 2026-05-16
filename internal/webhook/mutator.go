@@ -56,10 +56,11 @@ type Config struct {
 	// to when AuditMode == "file".
 	AuditFile string
 
-	// MaxRequests / RateLimit map to AEGRAIL_ENGINE_MAX_REQUESTS /
-	// AEGRAIL_ENGINE_RATE_LIMIT. Empty = unlimited.
+	// MaxRequests / RateLimit / MaxTokens map to AEGRAIL_ENGINE_*.
+	// Empty = unlimited.
 	MaxRequests string
 	RateLimit   string
+	MaxTokens   string
 
 	// DefaultIdentity is what we stamp on aegrail.io/identity when
 	// the agent pod doesn't already have the label.
@@ -255,6 +256,9 @@ func buildEngineContainer(cfg Config) container {
 	}
 	if cfg.RateLimit != "" {
 		env = append(env, envVar{Name: "AEGRAIL_ENGINE_RATE_LIMIT", Value: cfg.RateLimit})
+	}
+	if cfg.MaxTokens != "" {
+		env = append(env, envVar{Name: "AEGRAIL_ENGINE_MAX_TOKENS", Value: cfg.MaxTokens})
 	}
 
 	return container{

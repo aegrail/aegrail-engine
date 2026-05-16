@@ -53,7 +53,7 @@ import (
 // link time via `-ldflags "-X main.Version=$VERSION"` based on the
 // git tag, so the value here is what local `go run` / `go build`
 // reports — keep it in sync with the most recent tag for hygiene.
-var Version = "0.2.0"
+var Version = "0.3.0"
 
 func main() {
 	if err := run(); err != nil {
@@ -91,6 +91,10 @@ func run() error {
 	flag.StringVar(&rateLimitRaw, "rate-limit",
 		os.Getenv("AEGRAIL_ENGINE_RATE_LIMIT"),
 		"token-bucket rate (e.g. '10/sec', '100/min')")
+	var maxTokensRaw string
+	flag.StringVar(&maxTokensRaw, "max-tokens",
+		os.Getenv("AEGRAIL_ENGINE_MAX_TOKENS"),
+		"hard cap on cumulative LLM tokens parsed from known LLM responses (0 = unlimited)")
 	flag.DurationVar(&shutdownTimeout, "shutdown-timeout", 10*time.Second,
 		"max time to wait for in-flight requests on SIGTERM")
 	flag.BoolVar(&showVersion, "version", false, "print version and exit")
@@ -137,12 +141,24 @@ func run() error {
 		return fmt.Errorf("rate-limit: %w", err)
 	}
 
+	var tokenBudget *limits.TokenBudget
+	if strings.TrimSpace(maxTokensRaw) != "" {
+		n, err := strconv.ParseInt(strings.TrimSpace(maxTokensRaw), 10, 64)
+		if err != nil {
+			return fmt.Errorf("max-tokens: %w", err)
+		}
+		if n > 0 {
+			tokenBudget = limits.NewTokenBudget(n)
+		}
+	}
+
 	prox := &proxy.Proxy{
-		Policy:  pol,
-		Sink:    sink,
-		Session: session,
-		Counter: counter,
-		Limiter: limiter,
+		Policy:      pol,
+		Sink:        sink,
+		Session:     session,
+		Counter:     counter,
+		Limiter:     limiter,
+		TokenBudget: tokenBudget,
 	}
 	prox.EmitEngineStart(Version)
 

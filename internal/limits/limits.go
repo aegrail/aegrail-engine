@@ -59,6 +59,51 @@ func (c *RequestCounter) Allow() (bool, int64) {
 // Max returns the configured ceiling (0 means unlimited).
 func (c *RequestCounter) Max() int64 { return c.max }
 
+// TokenBudget caps the total token count over the engine process's
+// lifetime, accumulated from parsed LLM responses (v0.3.0+).
+// Construct with NewTokenBudget; pass max=0 for "unlimited."
+// Safe for concurrent use.
+type TokenBudget struct {
+	max  int64
+	used atomic.Int64
+}
+
+// NewTokenBudget builds a token budget with the given hard cap.
+// max=0 (or negative) means "unlimited" — Add reports allowed
+// regardless of usage.
+func NewTokenBudget(max int64) *TokenBudget {
+	return &TokenBudget{max: max}
+}
+
+// Add records `n` tokens consumed by an LLM response. Returns
+// (allowedNextCall, totalSoFar): allowedNextCall is true unless
+// the *next* request would push the running total beyond max
+// (i.e., the budget is exhausted). The current call always
+// records — we never lose accounting for already-consumed work.
+func (t *TokenBudget) Add(n int64) (bool, int64) {
+	total := t.used.Add(n)
+	if t.max <= 0 {
+		return true, total
+	}
+	return total < t.max, total
+}
+
+// Used reports the current cumulative token count.
+func (t *TokenBudget) Used() int64 { return t.used.Load() }
+
+// Max returns the configured ceiling (0 means unlimited).
+func (t *TokenBudget) Max() int64 { return t.max }
+
+// OverBudget reports whether the running total has crossed the cap.
+// Useful as a pre-flight check before initiating an LLM call so the
+// engine refuses traffic the moment the budget is gone.
+func (t *TokenBudget) OverBudget() bool {
+	if t.max <= 0 {
+		return false
+	}
+	return t.used.Load() >= t.max
+}
+
 // RateLimiter is a single-bucket token-bucket limiter. Bucket holds
 // up to `burst` tokens; refills at `rate` tokens per second. Each
 // Allow attempts to take one token.

@@ -51,6 +51,10 @@ spec:
             - name: AEGRAIL_ENGINE_RATE_LIMIT
               value: {{ .Values.limits.rate | quote }}
             {{- end }}
+            {{- if .Values.limits.maxTokens }}
+            - name: AEGRAIL_ENGINE_MAX_TOKENS
+              value: {{ .Values.limits.maxTokens | quote }}
+            {{- end }}
             {{- end }}
             - name: AEGRAIL_ENGINE_DEFAULT_IDENTITY
               value: {{ .Values.webhook.defaultIdentity | quote }}

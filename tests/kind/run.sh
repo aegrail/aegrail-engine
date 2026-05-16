@@ -298,8 +298,31 @@ missing = expected - present
 if missing:
     print(f"  missing required event types: {missing}", file=sys.stderr)
     sys.exit(1)
+# v0.3.0: verify the Ollama egress_allowed event carries parsed
+# LLM token counts (tokens_in, tokens_out, llm_model).
+ollama_events = [
+    e for e in events
+    if e.event == "egress_allowed"
+    and e.payload.get("host") == "host.docker.internal"
+    and e.payload.get("path", "").startswith("/api/")
+]
+if not ollama_events:
+    print("  no Ollama egress_allowed event found in chain", file=sys.stderr)
+    sys.exit(1)
+ev = ollama_events[0]
+tokens_in = ev.payload.get("tokens_in", 0)
+tokens_out = ev.payload.get("tokens_out", 0)
+llm_model = ev.payload.get("llm_model", "")
+print(f"  Ollama event parsed: model={llm_model!r} tokens_in={tokens_in} tokens_out={tokens_out}")
+if tokens_in <= 0 or tokens_out <= 0:
+    print(f"  v0.3.0 token parsing failed: expected non-zero tokens, got in={tokens_in} out={tokens_out}", file=sys.stderr)
+    sys.exit(1)
+if not llm_model:
+    print("  v0.3.0 token parsing failed: llm_model field missing/empty", file=sys.stderr)
+    sys.exit(1)
 PY
 pass "Python verify_chain validated the engine's audit chain end-to-end"
+pass "v0.3.0 LLM token parsing extracted tokens from Ollama response"
 
 # ----------------------------------------------------------------
 echo ""

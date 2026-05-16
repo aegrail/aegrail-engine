@@ -13,13 +13,17 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/arpitcoder/aegrail-engine/internal/llmparse"
 )
 
 func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +72,13 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	statusCode := 0
 	var forwardErr error
+	var usage llmparse.Usage
+
+	// Pre-recognise the request URL. If this is an LLM endpoint we
+	// know how to parse, we'll buffer the response body in
+	// ModifyResponse so we can extract token usage. Non-LLM traffic
+	// streams through without buffering.
+	llmTarget := llmparse.Recognise(r.URL)
 
 	rp := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
@@ -87,6 +98,19 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			statusCode = resp.StatusCode
+			if !llmTarget || resp.StatusCode >= 400 {
+				return nil
+			}
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return err
+			}
+			_ = resp.Body.Close()
+			usage = llmparse.ParseResponse(r.URL, body)
+			// Restore the body so the client receives it intact.
+			resp.Body = io.NopCloser(bytes.NewReader(body))
+			resp.ContentLength = int64(len(body))
+			resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
 			return nil
 		},
 	}
@@ -106,13 +130,25 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	p.emit("egress_allowed", map[string]any{
+
+	payload := map[string]any{
 		"host":        host,
 		"method":      method,
 		"path":        path,
 		"status_code": statusCode,
 		"duration_ms": duration.Milliseconds(),
-	})
+	}
+	if usage.Recognised {
+		payload["llm_model"] = usage.Model
+		payload["tokens_in"] = usage.TokensIn
+		payload["tokens_out"] = usage.TokensOut
+		// Accumulate against the token budget (if configured).
+		if p.TokenBudget != nil {
+			_, total := p.TokenBudget.Add(int64(usage.TokensIn + usage.TokensOut))
+			payload["tokens_total"] = total
+		}
+	}
+	p.emit("egress_allowed", payload)
 }
 
 // requestHost extracts the destination host for a non-CONNECT

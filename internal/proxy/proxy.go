@@ -53,6 +53,14 @@ type Proxy struct {
 	// with reason="rate_limited" and HTTP 429.
 	Limiter *limits.RateLimiter
 
+	// TokenBudget caps cumulative LLM tokens (input + output) over
+	// the engine's lifetime, parsed from known LLM response shapes
+	// (v0.3.0+). Nil = unlimited. When the budget is over before a
+	// request, the call is denied with reason="token_budget_exceeded"
+	// and HTTP 429. HTTPS CONNECT tunnels are opaque to the parser
+	// so token enforcement only fires on plain-HTTP forwards.
+	TokenBudget *limits.TokenBudget
+
 	// DialTimeout caps how long the proxy waits when establishing a
 	// CONNECT tunnel to upstream. Zero defaults to 10s.
 	DialTimeout time.Duration
@@ -93,6 +101,19 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"burst":        p.Limiter.Burst(),
 			"host":         hostFromRequest(r),
 			"method":       r.Method,
+		})
+		return
+	}
+
+	// Pre-flight: LLM token budget. Refuses traffic once the
+	// running token total has crossed the cap — the next request
+	// can't restart accounting.
+	if p.TokenBudget != nil && p.TokenBudget.OverBudget() {
+		p.denyRateOrCount(w, r, "token_budget_exceeded", map[string]any{
+			"tokens_used": p.TokenBudget.Used(),
+			"tokens_max":  p.TokenBudget.Max(),
+			"host":        hostFromRequest(r),
+			"method":      r.Method,
 		})
 		return
 	}

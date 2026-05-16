@@ -71,6 +71,16 @@ limits:
   # egress_denied with reason=rate_limited and HTTP 429.
   # Example: "10/sec", "1000/min"
   rate: ""
+  # Hard cap on cumulative LLM tokens (input + output) parsed from
+  # known LLM response shapes (v0.3.0+). 0 = unlimited. Once the
+  # running total crosses this value, the next request is denied
+  # with reason=token_budget_exceeded and HTTP 429. The current
+  # in-flight call always finishes accounting — we never lose
+  # already-consumed work. Note: HTTPS CONNECT tunnels are opaque
+  # to the parser; token enforcement only fires on plain-HTTP
+  # forwards (i.e., when TLS is terminated upstream of aegrail,
+  # or for in-cluster HTTP traffic to a model server like Ollama).
+  maxTokens: 0
 
 # Audit log mode. v0.1.0 will write JSONL with a SHA-256 chain link
 # per event, compatible with the aegrail Python library's format.

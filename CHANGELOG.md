@@ -6,6 +6,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-16
+
+### Added — LLM response token parsing + network-layer token budget
+
+The "agent never imported the SDK and the platform still wants USD
+guardrails" piece. The engine now recognises known LLM endpoint URL
+shapes on the **plain-HTTP forward path**, parses their response
+bodies to extract token usage, and enforces a cumulative token
+budget at the network layer.
+
+**Recognised URL patterns:**
+
+- `api.openai.com/v1/chat/completions` (OpenAI Chat Completions)
+- `api.openai.com/v1/responses` (OpenAI Responses API)
+- `*/api/generate` and `*/api/chat` (Ollama — matches any host so
+  in-cluster Service DNS, localhost, sidecar, all work)
+
+**Each parsed response augments the `egress_allowed` audit event:**
+
+```json
+{
+  "event": "egress_allowed",
+  "payload": {
+    "host": "host.docker.internal",
+    "method": "POST",
+    "path": "/api/generate",
+    "status_code": 200,
+    "duration_ms": 1843,
+    "llm_model": "llama3.2:3b",
+    "tokens_in": 33,
+    "tokens_out": 5,
+    "tokens_total": 38
+  }
+}
+```
+
+`tokens_total` is the running cumulative since engine boot.
+
+**New env var:** `AEGRAIL_ENGINE_MAX_TOKENS` — hard cap on cumulative
+LLM tokens (input + output). Once the running total crosses this
+value, the next request is denied with `egress_denied` reason
+`token_budget_exceeded` and HTTP 429. The current in-flight call
+always finishes accounting — we never lose already-consumed work.
+The webhook injector propagates this env var to auto-injected
+sidecars.
+
+**Helm values:** new `limits.maxTokens` (0 = unlimited).
+
+### Important limitation
+
+**HTTPS CONNECT tunnels are opaque** to the parser — TLS is end-to-
+end between agent and provider. Token enforcement on `api.openai.com`
+HTTPS traffic requires either:
+
+1. Terminating TLS upstream of aegrail (an in-cluster reverse proxy)
+   so the engine sees plain HTTP, OR
+2. The future v0.4.x MITM mode that injects a CA cert into agent
+   pods and terminates TLS at the engine.
+
+For self-hosted models (Ollama, vLLM, TGI) and in-cluster gateways,
+the v0.3.0 plain-HTTP coverage is complete.
+
+### Files added
+
+- `internal/llmparse/` — URL recognition + body parsers for OpenAI
+  (Chat Completions and Responses) and Ollama. 8 unit tests.
+- `internal/limits/` gains `TokenBudget` (atomic cumulative counter
+  with cap). 4 new unit tests.
+- `internal/proxy/http.go` reads response bodies for recognised
+  LLM URLs via the `ModifyResponse` hook, extracts usage, augments
+  the audit event, and accumulates against the budget.
+
+### Validated
+
+- `tests/kind/run.sh` extended: the audit-chain scenario now also
+  asserts that the Ollama call's `egress_allowed` event carries
+  non-zero `tokens_in`, `tokens_out`, and a populated `llm_model`
+  field — proving end-to-end real-Ollama → engine → response-parse
+  → audit-event.
+- Existing 13 scenarios + webhook gate still green. Backward compat
+  verified (token enforcement off by default).
+
 ## [0.2.0] — 2026-05-16
 
 ### Added — mutating admission webhook (auto-injection)

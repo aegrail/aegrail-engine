@@ -88,6 +88,7 @@ func run() error {
 		AuditFile:        envDefault("AEGRAIL_ENGINE_AUDIT_FILE", "/var/log/aegrail/audit.jsonl"),
 		MaxRequests:      os.Getenv("AEGRAIL_ENGINE_MAX_REQUESTS"),
 		RateLimit:        os.Getenv("AEGRAIL_ENGINE_RATE_LIMIT"),
+		MaxTokens:        os.Getenv("AEGRAIL_ENGINE_MAX_TOKENS"),
 		DefaultIdentity:  envDefault("AEGRAIL_ENGINE_DEFAULT_IDENTITY", "auto-injected/v1"),
 		EngineListenPort: envInt("AEGRAIL_ENGINE_LISTEN_PORT", 8080),
 	}
