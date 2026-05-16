@@ -124,8 +124,10 @@ func TestMITM_EndToEnd_OpenAIChatCompletions(t *testing.T) {
 		t.Errorf("client received body but model field wrong: %v", parsed["model"])
 	}
 
-	// Verify audit event for MITM'd traffic
-	allowed := sink.eventsOfType(audit.TypeEgressAllowed)
+	// Verify audit event for MITM'd traffic. The engine's emit
+	// happens after resp.Write inside the MITM loop, which races
+	// with client.Get's return — poll to avoid -race flakes in CI.
+	allowed := waitForEvents(sink, audit.TypeEgressAllowed, 1, 2*time.Second)
 	if len(allowed) != 1 {
 		t.Fatalf("egress_allowed events: got %d, want 1\nall events: %d", len(allowed), len(sink.events))
 	}
@@ -188,12 +190,30 @@ func TestMITM_HostNotInPatternsTunnelsOpaquely(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
-	allowed := sink.eventsOfType(audit.TypeEgressAllowed)
+	// The opaque-tunnel emit happens after the relay goroutines see
+	// EOF and the handleConnect goroutine wraps up — that's
+	// asynchronous w.r.t. the client.Get return. Poll for it.
+	allowed := waitForEvents(sink, audit.TypeEgressAllowed, 1, 2*time.Second)
 	if len(allowed) != 1 {
 		t.Fatalf("egress_allowed events: got %d, want 1", len(allowed))
 	}
 	if mitmField, ok := allowed[0].Payload["mitm"]; ok && mitmField == true {
 		t.Error("opaque-tunneled connection should NOT have mitm=true in audit payload")
+	}
+}
+
+// waitForEvents polls the sink for up to `timeout` for at least
+// `want` events of the given type. Used in MITM / CONNECT tests
+// where the audit emit is asynchronous w.r.t. the client's
+// http.Get return.
+func waitForEvents(s *memorySink, eventType string, want int, timeout time.Duration) []audit.Event {
+	deadline := time.Now().Add(timeout)
+	for {
+		got := s.eventsOfType(eventType)
+		if len(got) >= want || time.Now().After(deadline) {
+			return got
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
