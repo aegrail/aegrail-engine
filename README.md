@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".assets/logo.svg" alt="aegrail-engine" width="140">
+<img src=".assets/logo.png" alt="aegrail-engine" width="140">
 
 # aegrail-engine
 
